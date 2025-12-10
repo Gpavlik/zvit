@@ -2,22 +2,29 @@ const express = require("express");
 const cors = require("cors");
 const fs = require("fs");
 const path = require("path");
+
 const app = express();
 const PORT = process.env.PORT || 3000;
-
-app.use(cors()); // ✅ Дозволяє запити з будь-якого фронтенду
-app.use(express.json());
-
 const DATA_FILE = path.join(__dirname, "labCards.json");
 
+// Middleware
+app.use(cors({
+  origin: "http://127.0.0.1:5500" // ✅ дозволяє твій локальний фронтенд
+}));
 app.use(express.json());
+
+// Перевірка наявності файлу
+if (!fs.existsSync(DATA_FILE)) {
+  fs.writeFileSync(DATA_FILE, "[]");
+  console.log("📂 Створено новий labCards.json");
+}
 
 // Кореневий маршрут
 app.get("/", (req, res) => {
   res.send("✅ API працює. Використовуйте /labcards");
 });
 
-// Завантажити всі лабораторії
+// Отримати всі лабораторії
 app.get("/labcards", (req, res) => {
   fs.readFile(DATA_FILE, "utf8", (err, data) => {
     if (err) {
@@ -49,6 +56,7 @@ app.post("/labcards", (req, res) => {
     const index = labs.findIndex(l => l.id === newLab.id);
     if (index >= 0) labs[index] = newLab;
     else labs.push(newLab);
+
     fs.writeFile(DATA_FILE, JSON.stringify(labs, null, 2), err => {
       if (err) return res.status(500).json({ error: "Не вдалося зберегти" });
       res.json({ message: "✅ Збережено", lab: newLab });
@@ -69,6 +77,7 @@ app.delete("/labcards/:id", (req, res) => {
       }
     }
     labs = labs.filter(l => l.id !== id);
+
     fs.writeFile(DATA_FILE, JSON.stringify(labs, null, 2), err => {
       if (err) return res.status(500).json({ error: "Не вдалося видалити" });
       res.json({ message: `🗑️ Лабораторія ${id} видалена` });
@@ -76,20 +85,7 @@ app.delete("/labcards/:id", (req, res) => {
   });
 });
 
+// Запуск сервера
 app.listen(PORT, () => {
   console.log(`✅ Сервер запущено на порті ${PORT}`);
-});
-fs.readFile(DATA_FILE, "utf8", (err, data) => {
-  if (err) {
-    console.warn("⚠️ labCards.json не знайдено, створюю новий...");
-    fs.writeFileSync(DATA_FILE, "[]");   // створює файл автоматично
-    return res.json([]);
-  }
-  try {
-    const labs = JSON.parse(data || "[]");
-    res.json(labs);
-  } catch (e) {
-    console.error("❌ Помилка парсингу JSON:", e);
-    res.json([]);
-  }
 });
