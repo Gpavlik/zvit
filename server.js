@@ -79,3 +79,17 @@ app.delete("/labcards/:id", (req, res) => {
 app.listen(PORT, () => {
   console.log(`✅ Сервер запущено на порті ${PORT}`);
 });
+fs.readFile(DATA_FILE, "utf8", (err, data) => {
+  if (err) {
+    console.warn("⚠️ labCards.json не знайдено, створюю новий...");
+    fs.writeFileSync(DATA_FILE, "[]");   // створює файл автоматично
+    return res.json([]);
+  }
+  try {
+    const labs = JSON.parse(data || "[]");
+    res.json(labs);
+  } catch (e) {
+    console.error("❌ Помилка парсингу JSON:", e);
+    res.json([]);
+  }
+});
