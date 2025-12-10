@@ -1,0 +1,46 @@
+[
+  {
+    "role": "admin",
+    "login": "admin",
+    "password": "admin123"
+  },
+  {
+    "role": "employer",
+    "district": "Центральний",
+    "login": "central",
+    "password": "central123"
+  },
+  {
+    "role": "employer",
+    "district": "Наддніпрянський",
+    "login": "nadnipr",
+    "password": "nadnipr123"
+  },
+  {
+    "role": "territorial_manager",
+    "territory": "Східний",
+    "districts": [
+      "Східно-поліський",
+      "Таврійський",
+      "Наддніпрянський",
+      "Слобожанський",
+      "Центральний"
+    ],
+    "login": "east",
+    "password": "east123"
+  },
+  {
+    "role": "territorial_manager",
+    "territory": "Західний",
+    "districts": [
+      "Волиньський",
+      "Закарпатський",
+      "Прикарпатський",
+      "Галицький",
+      "Подільський",
+      "Західно-поліський"
+    ],
+    "login": "west",
+    "password": "west123"
+  }
+]
