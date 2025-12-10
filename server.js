@@ -8,9 +8,7 @@ const PORT = process.env.PORT || 3000;
 const DATA_FILE = path.join(__dirname, "labCards.json");
 
 // Middleware
-app.use(cors({
-  origin: "http://127.0.0.1:5500" // ✅ дозволяє твій локальний фронтенд
-}));
+app.use(cors());
 app.use(express.json());
 
 // Перевірка наявності файлу
@@ -88,4 +86,50 @@ app.delete("/labcards/:id", (req, res) => {
 // Запуск сервера
 app.listen(PORT, () => {
   console.log(`✅ Сервер запущено на порті ${PORT}`);
+});
+app.post("/login", (req, res) => {
+  const { login, password } = req.body;
+
+  fs.readFile(path.join(__dirname, "users.json"), "utf8", (err, data) => {
+    if (err) return res.status(500).json({ error: "Не вдалося прочитати users.json" });
+
+    const users = JSON.parse(data || "[]");
+    const user = users.find(u => u.login === login && u.password === password);
+
+    if (!user) {
+      return res.status(401).json({ error: "❌ Невірний логін або пароль" });
+    }
+
+    res.json({
+      message: "✅ Авторизація успішна",
+      role: user.role,
+      territory: user.territory || null,
+      district: user.district || null,
+      districts: user.districts || []
+    });
+  });
+});
+app.get("/labcards/:login", (req, res) => {
+  const login = req.params.login;
+
+  const users = JSON.parse(fs.readFileSync(path.join(__dirname, "users.json"), "utf8"));
+  const user = users.find(u => u.login === login);
+
+  if (!user) return res.status(404).json({ error: "Користувач не знайдений" });
+
+  const labs = JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
+
+  if (user.role === "admin") {
+    return res.json(labs);
+  }
+
+  if (user.role === "employer") {
+    return res.json(labs.filter(l => l.district === user.district));
+  }
+
+  if (user.role === "territorial_manager") {
+    return res.json(labs.filter(l => user.districts.includes(l.district)));
+  }
+
+  res.json([]);
 });
