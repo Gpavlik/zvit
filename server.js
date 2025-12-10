@@ -1,8 +1,12 @@
 const express = require("express");
+const cors = require("cors");
 const fs = require("fs");
 const path = require("path");
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+app.use(cors()); // ✅ Дозволяє запити з будь-якого фронтенду
+app.use(express.json());
 
 const DATA_FILE = path.join(__dirname, "labCards.json");
 
