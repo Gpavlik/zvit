@@ -5,14 +5,12 @@ const path = require("path");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
-import cors from "cors"; app.use(cors());
-
-const DATA_FILE = path.join(__dirname, "labCards.json");
 
 // Middleware
 app.use(cors());
 app.use(express.json());
+
+const DATA_FILE = path.join(__dirname, "labCards.json");
 
 // Перевірка наявності файлу
 if (!fs.existsSync(DATA_FILE)) {
@@ -86,10 +84,7 @@ app.delete("/labcards/:id", (req, res) => {
   });
 });
 
-// Запуск сервера
-app.listen(PORT, () => {
-  console.log(`✅ Сервер запущено на порті ${PORT}`);
-});
+// Авторизація
 app.post("/login", (req, res) => {
   const { login, password } = req.body;
 
@@ -112,6 +107,8 @@ app.post("/login", (req, res) => {
     });
   });
 });
+
+// Отримати лабораторії для конкретного користувача
 app.get("/labcards/:login", (req, res) => {
   const login = req.params.login;
 
@@ -135,4 +132,9 @@ app.get("/labcards/:login", (req, res) => {
   }
 
   res.json([]);
+});
+
+// Запуск сервера (лише один раз!)
+app.listen(PORT, () => {
+  console.log(`✅ Сервер запущено на порті ${PORT}`);
 });
