@@ -5,6 +5,9 @@ const path = require("path");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
+import cors from "cors"; app.use(cors());
+
 const DATA_FILE = path.join(__dirname, "labCards.json");
 
 // Middleware
