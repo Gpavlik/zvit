@@ -1,46 +1,29 @@
 [
+  { "role": "admin", "login": "admin", "password": "admin123" },
+  { "role": "employer", "district": "Центральний", "login": "central", "password": "central123" },
+  { "role": "employer", "district": "Наддніпрянський", "login": "nadnipr", "password": "nadnipr123" },
+  { "role": "employer", "district": "Слобожанський", "login": "slobozh", "password": "slobozh123" },
+  { "role": "employer", "district": "Східно-поліський", "login": "eastpol", "password": "eastpol123" },
+  { "role": "employer", "district": "Таврійський", "login": "tavriya", "password": "tavriya123" },
+  { "role": "employer", "district": "Волиньський", "login": "volyn", "password": "volyn123" },
+  { "role": "employer", "district": "Закарпатський", "login": "zakarp", "password": "zakarp123" },
+  { "role": "employer", "district": "Прикарпатський", "login": "prykarp", "password": "prykarp123" },
+  { "role": "employer", "district": "Галицький", "login": "halych", "password": "halych123" },
+  { "role": "employer", "district": "Подільський", "login": "podil", "password": "podil123" },
+  { "role": "employer", "district": "Західно-поліський", "login": "westpol", "password": "westpol123" },
   {
-    "role": "admin",
-    "login": "admin",
-    "password": "admin123"
-  },
-  {
-    "role": "employer",
-    "district": "Центральний",
-    "login": "central",
-    "password": "central123"
-  },
-  {
-    "role": "employer",
-    "district": "Наддніпрянський",
-    "login": "nadnipr",
-    "password": "nadnipr123"
+    "role": "territorial_manager",
+    "territory": "Західний",
+    "districts": ["Волиньський","Закарпатський","Прикарпатський","Галицький","Подільський"],
+    "login": "west",
+    "password": "west123"
   },
   {
     "role": "territorial_manager",
     "territory": "Східний",
-    "districts": [
-      "Східно-поліський",
-      "Таврійський",
-      "Наддніпрянський",
-      "Слобожанський",
-      "Центральний"
-    ],
+    "districts": ["Східно-поліський","Західно-поліський","Таврійський","Наддніпрянський","Слобожанський","Центральний"],
     "login": "east",
     "password": "east123"
-  },
-  {
-    "role": "territorial_manager",
-    "territory": "Західний",
-    "districts": [
-      "Волиньський",
-      "Закарпатський",
-      "Прикарпатський",
-      "Галицький",
-      "Подільський",
-      "Західно-поліський"
-    ],
-    "login": "west",
-    "password": "west123"
   }
 ]
+
