@@ -1,85 +1,68 @@
 const express = require("express");
 const cors = require("cors");
-const fs = require("fs");
-const path = require("path");
+const mongoose = require("mongoose");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Middleware
 app.use(cors());
 app.use(express.json());
 
-const DATA_FILE = path.join(__dirname, "labCards.json");
-const USERS_FILE = path.join(__dirname, "users.json");
+// 🔗 Підключення до MongoDB Atlas
+mongoose.connect(process.env.MONGODB_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true
+})
+.then(() => console.log("✅ Підключено до MongoDB Atlas"))
+.catch(err => console.error("❌ Помилка MongoDB:", err));
 
-// Перевірка наявності файлів
-if (!fs.existsSync(DATA_FILE)) fs.writeFileSync(DATA_FILE, "[]");
-if (!fs.existsSync(USERS_FILE)) fs.writeFileSync(USERS_FILE, "[]");
-
-// Кореневий маршрут
-app.get("/", (req, res) => {
-  res.send("✅ API працює. Використовуйте /labcards та /login");
+// 🟢 Схеми
+const UserSchema = new mongoose.Schema({
+  login: String,
+  password: String, // у продакшн краще зберігати хеш
+  role: String,
+  district: String,
+  territory: String,
+  districts: [String]
 });
 
-// Отримати всі лабораторії
-app.get("/labcards", (req, res) => {
-  fs.readFile(DATA_FILE, "utf8", (err, data) => {
-    if (err) return res.json([]);
-    try {
-      const labs = JSON.parse(data || "[]");
-      res.json(Array.isArray(labs) ? labs : []);
-    } catch {
-      res.json([]);
-    }
-  });
+const LabSchema = new mongoose.Schema({
+  partner: String,
+  region: String,
+  city: String,
+  institution: String,
+  address: String,
+  contractor: String,
+  phone: String,
+  edrpou: String,
+  manager: String,
+  devices: [{
+    device: String,
+    soldDate: Date,
+    lastService: Date,
+    kp: String,
+    replacedParts: String
+  }],
+  tasks: [{
+    title: String,
+    date: Date,
+    tasks: [{
+      priority: String,
+      action: String,
+      device: String
+    }]
+  }]
 });
 
-// Додати або оновити лабораторію
-app.post("/labcards", (req, res) => {
-  const newLab = req.body;
-  fs.readFile(DATA_FILE, "utf8", (err, data) => {
-    let labs = [];
-    if (!err && data) {
-      try { labs = JSON.parse(data); } catch {}
-    }
-    const index = labs.findIndex(l => l.id === newLab.id);
-    if (index >= 0) labs[index] = newLab;
-    else labs.push(newLab);
+const User = mongoose.model("User", UserSchema);
+const Lab = mongoose.model("Lab", LabSchema);
 
-    fs.writeFile(DATA_FILE, JSON.stringify(labs, null, 2), err => {
-      if (err) return res.status(500).json({ error: "Не вдалося зберегти" });
-      res.json({ message: "✅ Збережено", lab: newLab });
-    });
-  });
-});
-
-// Видалити лабораторію
-app.delete("/labcards/:id", (req, res) => {
-  const id = req.params.id;
-  fs.readFile(DATA_FILE, "utf8", (err, data) => {
-    let labs = [];
-    if (!err && data) {
-      try { labs = JSON.parse(data); } catch {}
-    }
-    labs = labs.filter(l => l.id !== id);
-
-    fs.writeFile(DATA_FILE, JSON.stringify(labs, null, 2), err => {
-      if (err) return res.status(500).json({ error: "Не вдалося видалити" });
-      res.json({ message: `🗑️ Лабораторія ${id} видалена` });
-    });
-  });
-});
-
-// Авторизація
-app.post("/login", (req, res) => {
+// 🟢 Авторизація
+app.post("/login", async (req, res) => {
   const { login, password } = req.body;
-  fs.readFile(USERS_FILE, "utf8", (err, data) => {
-    if (err) return res.status(500).json({ error: "Не вдалося прочитати users.json" });
-
-    let users = [];
-    try { users = JSON.parse(data || "[]"); } catch {}
-    const user = users.find(u => u.login === login && u.password === password);
-
+  try {
+    const user = await User.findOne({ login, password });
     if (!user) return res.status(401).json({ error: "❌ Невірний логін або пароль" });
 
     res.json({
@@ -89,35 +72,68 @@ app.post("/login", (req, res) => {
       district: user.district || null,
       districts: user.districts || []
     });
-  });
+  } catch (err) {
+    res.status(500).json({ error: "❌ Помилка сервера" });
+  }
 });
 
-// Отримати лабораторії для конкретного користувача
-app.get("/labcards/user/:login", (req, res) => {
-  const login = req.params.login;
+// 🟢 Отримати всі лабораторії
+app.get("/labcards", async (req, res) => {
+  try {
+    const labs = await Lab.find();
+    res.json(labs);
+  } catch (err) {
+    res.status(500).json({ error: "❌ Не вдалося отримати лабораторії" });
+  }
+});
 
-  fs.readFile(USERS_FILE, "utf8", (err, data) => {
-    if (err) return res.status(500).json({ error: "Не вдалося прочитати users.json" });
+// 🟢 Додати/оновити лабораторію
+app.post("/labcards", async (req, res) => {
+  try {
+    const lab = req.body;
+    let existing = await Lab.findOne({ _id: lab._id });
+    if (existing) {
+      await Lab.updateOne({ _id: lab._id }, lab);
+      res.json({ message: "✅ Оновлено", lab });
+    } else {
+      const newLab = new Lab(lab);
+      await newLab.save();
+      res.json({ message: "✅ Додано", lab: newLab });
+    }
+  } catch (err) {
+    res.status(500).json({ error: "❌ Не вдалося зберегти лабораторію" });
+  }
+});
 
-    let users = [];
-    try { users = JSON.parse(data || "[]"); } catch {}
-    const user = users.find(u => u.login === login);
+// 🟢 Видалити лабораторію
+app.delete("/labcards/:id", async (req, res) => {
+  try {
+    await Lab.findByIdAndDelete(req.params.id);
+    res.json({ message: `🗑️ Лабораторія ${req.params.id} видалена` });
+  } catch (err) {
+    res.status(500).json({ error: "❌ Не вдалося видалити лабораторію" });
+  }
+});
+
+// 🟢 Лабораторії для конкретного користувача
+app.get("/labcards/user/:login", async (req, res) => {
+  try {
+    const user = await User.findOne({ login: req.params.login });
     if (!user) return res.status(404).json({ error: "Користувач не знайдений" });
 
-    fs.readFile(DATA_FILE, "utf8", (err, labsData) => {
-      let labs = [];
-      try { labs = JSON.parse(labsData || "[]"); } catch {}
+    const labs = await Lab.find();
 
-      if (user.role === "admin") return res.json(labs);
-      if (user.role === "employer") return res.json(labs.filter(l => l.district === user.district));
-      if (user.role === "territorial_manager") return res.json(labs.filter(l => user.districts.includes(l.district)));
+    if (user.role === "admin") return res.json(labs);
+    if (user.role === "employer") return res.json(labs.filter(l => l.district === user.district));
+    if (user.role === "territorial_manager") return res.json(labs.filter(l => user.districts.includes(l.district)));
 
-      res.json([]);
-    });
-  });
+    res.json([]);
+  } catch (err) {
+    res.status(500).json({ error: "❌ Помилка сервера" });
+  }
 });
 
-// Запуск сервера
+// 🟢 Запуск сервера
 app.listen(PORT, () => {
   console.log(`✅ Сервер запущено на порті ${PORT}`);
 });
