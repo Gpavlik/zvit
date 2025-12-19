@@ -6,35 +6,29 @@ const path = require("path");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Middleware
 app.use(cors());
 app.use(express.json());
 
 const DATA_FILE = path.join(__dirname, "labCards.json");
+const USERS_FILE = path.join(__dirname, "users.json");
 
-// Перевірка наявності файлу
-if (!fs.existsSync(DATA_FILE)) {
-  fs.writeFileSync(DATA_FILE, "[]");
-  console.log("📂 Створено новий labCards.json");
-}
+// Перевірка наявності файлів
+if (!fs.existsSync(DATA_FILE)) fs.writeFileSync(DATA_FILE, "[]");
+if (!fs.existsSync(USERS_FILE)) fs.writeFileSync(USERS_FILE, "[]");
 
 // Кореневий маршрут
 app.get("/", (req, res) => {
-  res.send("✅ API працює. Використовуйте /labcards");
+  res.send("✅ API працює. Використовуйте /labcards та /login");
 });
 
 // Отримати всі лабораторії
 app.get("/labcards", (req, res) => {
   fs.readFile(DATA_FILE, "utf8", (err, data) => {
-    if (err) {
-      console.warn("⚠️ labCards.json не знайдено або не читається");
-      return res.json([]);
-    }
+    if (err) return res.json([]);
     try {
       const labs = JSON.parse(data || "[]");
-      res.json(labs);
-    } catch (e) {
-      console.error("❌ Помилка парсингу JSON:", e);
+      res.json(Array.isArray(labs) ? labs : []);
+    } catch {
       res.json([]);
     }
   });
@@ -46,11 +40,7 @@ app.post("/labcards", (req, res) => {
   fs.readFile(DATA_FILE, "utf8", (err, data) => {
     let labs = [];
     if (!err && data) {
-      try {
-        labs = JSON.parse(data);
-      } catch (e) {
-        console.error("❌ Помилка парсингу JSON:", e);
-      }
+      try { labs = JSON.parse(data); } catch {}
     }
     const index = labs.findIndex(l => l.id === newLab.id);
     if (index >= 0) labs[index] = newLab;
@@ -69,11 +59,7 @@ app.delete("/labcards/:id", (req, res) => {
   fs.readFile(DATA_FILE, "utf8", (err, data) => {
     let labs = [];
     if (!err && data) {
-      try {
-        labs = JSON.parse(data);
-      } catch (e) {
-        console.error("❌ Помилка парсингу JSON:", e);
-      }
+      try { labs = JSON.parse(data); } catch {}
     }
     labs = labs.filter(l => l.id !== id);
 
@@ -87,16 +73,14 @@ app.delete("/labcards/:id", (req, res) => {
 // Авторизація
 app.post("/login", (req, res) => {
   const { login, password } = req.body;
-
-  fs.readFile(path.join(__dirname, "users.json"), "utf8", (err, data) => {
+  fs.readFile(USERS_FILE, "utf8", (err, data) => {
     if (err) return res.status(500).json({ error: "Не вдалося прочитати users.json" });
 
-    const users = JSON.parse(data || "[]");
+    let users = [];
+    try { users = JSON.parse(data || "[]"); } catch {}
     const user = users.find(u => u.login === login && u.password === password);
 
-    if (!user) {
-      return res.status(401).json({ error: "❌ Невірний логін або пароль" });
-    }
+    if (!user) return res.status(401).json({ error: "❌ Невірний логін або пароль" });
 
     res.json({
       message: "✅ Авторизація успішна",
@@ -109,32 +93,31 @@ app.post("/login", (req, res) => {
 });
 
 // Отримати лабораторії для конкретного користувача
-app.get("/labcards/:login", (req, res) => {
+app.get("/labcards/user/:login", (req, res) => {
   const login = req.params.login;
 
-  const users = JSON.parse(fs.readFileSync(path.join(__dirname, "users.json"), "utf8"));
-  const user = users.find(u => u.login === login);
+  fs.readFile(USERS_FILE, "utf8", (err, data) => {
+    if (err) return res.status(500).json({ error: "Не вдалося прочитати users.json" });
 
-  if (!user) return res.status(404).json({ error: "Користувач не знайдений" });
+    let users = [];
+    try { users = JSON.parse(data || "[]"); } catch {}
+    const user = users.find(u => u.login === login);
+    if (!user) return res.status(404).json({ error: "Користувач не знайдений" });
 
-  const labs = JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
+    fs.readFile(DATA_FILE, "utf8", (err, labsData) => {
+      let labs = [];
+      try { labs = JSON.parse(labsData || "[]"); } catch {}
 
-  if (user.role === "admin") {
-    return res.json(labs);
-  }
+      if (user.role === "admin") return res.json(labs);
+      if (user.role === "employer") return res.json(labs.filter(l => l.district === user.district));
+      if (user.role === "territorial_manager") return res.json(labs.filter(l => user.districts.includes(l.district)));
 
-  if (user.role === "employer") {
-    return res.json(labs.filter(l => l.district === user.district));
-  }
-
-  if (user.role === "territorial_manager") {
-    return res.json(labs.filter(l => user.districts.includes(l.district)));
-  }
-
-  res.json([]);
+      res.json([]);
+    });
+  });
 });
 
-// Запуск сервера (лише один раз!)
+// Запуск сервера
 app.listen(PORT, () => {
   console.log(`✅ Сервер запущено на порті ${PORT}`);
 });
