@@ -79,26 +79,7 @@ app.post("/register", async (req, res) => {
 });
 
 // 🟢 Авторизація
-app.post("/login", async (req, res) => {
-  const { login, password } = req.body;
-  try {
-    const user = await User.findOne({ login });
-    if (!user) return res.status(401).json({ error: "❌ Невірний логін або пароль" });
-
-    const match = await bcrypt.compare(password, user.password);
-    if (!match) return res.status(401).json({ error: "❌ Невірний логін або пароль" });
-
-    res.json({
-      message: "✅ Авторизація успішна",
-      role: user.role,
-      territory: user.territory || null,
-      district: user.district || null,
-      districts: user.districts || []
-    });
-  } catch (err) {
-    res.status(500).json({ error: "❌ Помилка сервера" });
-  }
-});
+app.post("/login", async (req, res) => { const { login, password } = req.body; try { const user = await User.findOne({ login }); if (!user) return res.status(401).json({ error: "❌ Невірний логін або пароль" }); const match = await bcrypt.compare(password, user.password); if (!match) return res.status(401).json({ error: "❌ Невірний логін або пароль" }); res.json({ message: "✅ Авторизація успішна", role: user.role, territory: user.territory || null, district: user.district || null, districts: user.districts || [] }); } catch (err) { res.status(500).json({ error: "❌ Помилка сервера" }); } });
 
 // 🟢 Вихід
 app.post("/logout", (req, res) => {
