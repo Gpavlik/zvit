@@ -137,3 +137,6 @@ app.get("/labcards/user/:login", async (req, res) => {
 app.listen(PORT, () => {
   console.log(`✅ Сервер запущено на порті ${PORT}`);
 });
+app.post("/logout", (req, res) => {
+  res.json({ message: "Ви успішно вийшли з системи" });
+});
