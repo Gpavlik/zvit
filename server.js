@@ -1,6 +1,7 @@
 const express = require("express");
 const cors = require("cors");
 const mongoose = require("mongoose");
+const bcrypt = require("bcrypt");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -14,11 +15,10 @@ mongoose.connect(process.env.MONGODB_URI)
   .then(() => console.log("✅ Підключено до MongoDB Atlas"))
   .catch(err => console.error("❌ Помилка MongoDB:", err));
 
-
 // 🟢 Схеми
 const UserSchema = new mongoose.Schema({
-  login: String,
-  password: String, // у продакшн краще зберігати хеш
+  login: { type: String, required: true, unique: true },
+  password: { type: String, required: true }, // зберігаємо хеш
   role: String,
   district: String,
   territory: String,
@@ -56,12 +56,37 @@ const LabSchema = new mongoose.Schema({
 const User = mongoose.model("User", UserSchema);
 const Lab = mongoose.model("Lab", LabSchema);
 
+// 🟢 Реєстрація користувача (з хешуванням пароля)
+app.post("/register", async (req, res) => {
+  try {
+    const { login, password, role, district, territory, districts } = req.body;
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const newUser = new User({
+      login,
+      password: hashedPassword,
+      role,
+      district,
+      territory,
+      districts
+    });
+
+    await newUser.save();
+    res.json({ message: "✅ Користувач створений" });
+  } catch (err) {
+    res.status(500).json({ error: "❌ Помилка при створенні користувача" });
+  }
+});
+
 // 🟢 Авторизація
 app.post("/login", async (req, res) => {
   const { login, password } = req.body;
   try {
-    const user = await User.findOne({ login, password });
+    const user = await User.findOne({ login });
     if (!user) return res.status(401).json({ error: "❌ Невірний логін або пароль" });
+
+    const match = await bcrypt.compare(password, user.password);
+    if (!match) return res.status(401).json({ error: "❌ Невірний логін або пароль" });
 
     res.json({
       message: "✅ Авторизація успішна",
@@ -74,11 +99,11 @@ app.post("/login", async (req, res) => {
     res.status(500).json({ error: "❌ Помилка сервера" });
   }
 });
-const bcrypt = require("bcrypt");
-// при створенні користувача
-user.password = await bcrypt.hash(password, 10);
-// при логіні
-const match = await bcrypt.compare(password, user.password);
+
+// 🟢 Вихід
+app.post("/logout", (req, res) => {
+  res.json({ message: "🚪 Ви успішно вийшли з системи" });
+});
 
 // 🟢 Отримати всі лабораторії
 app.get("/labcards", async (req, res) => {
@@ -139,7 +164,4 @@ app.get("/labcards/user/:login", async (req, res) => {
 // 🟢 Запуск сервера
 app.listen(PORT, () => {
   console.log(`✅ Сервер запущено на порті ${PORT}`);
-});
-app.post("/logout", (req, res) => {
-  res.json({ message: "Ви успішно вийшли з системи" });
 });
