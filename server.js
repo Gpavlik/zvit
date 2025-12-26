@@ -10,12 +10,10 @@ app.use(cors());
 app.use(express.json());
 
 // 🔗 Підключення до MongoDB Atlas
-mongoose.connect(process.env.MONGODB_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true
-})
-.then(() => console.log("✅ Підключено до MongoDB Atlas"))
-.catch(err => console.error("❌ Помилка MongoDB:", err));
+mongoose.connect(process.env.MONGODB_URI)
+  .then(() => console.log("✅ Підключено до MongoDB Atlas"))
+  .catch(err => console.error("❌ Помилка MongoDB:", err));
+
 
 // 🟢 Схеми
 const UserSchema = new mongoose.Schema({
