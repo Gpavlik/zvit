@@ -74,6 +74,11 @@ app.post("/login", async (req, res) => {
     res.status(500).json({ error: "❌ Помилка сервера" });
   }
 });
+const bcrypt = require("bcrypt");
+// при створенні користувача
+user.password = await bcrypt.hash(password, 10);
+// при логіні
+const match = await bcrypt.compare(password, user.password);
 
 // 🟢 Отримати всі лабораторії
 app.get("/labcards", async (req, res) => {
