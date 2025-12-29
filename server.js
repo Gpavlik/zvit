@@ -2,8 +2,11 @@ const express = require("express");
 const cors = require("cors");
 const mongoose = require("mongoose");
 const bcrypt = require("bcrypt");
+const bodyParser = require("body-parser");
+const jwt = require("jsonwebtoken");
 
 const app = express();
+app.use(bodyParser.json());
 const PORT = process.env.PORT || 3000;
 
 // Middleware
@@ -168,3 +171,93 @@ app.get("/labcards/user/:login", async (req, res) => {
 app.listen(PORT, () => {
   console.log(`✅ Сервер запущено на порті ${PORT}`);
 });
+
+// 🔑 Секрет для JWT
+const SECRET = "supersecretkey";
+
+// 🧪 Тимчасова база користувачів (MongoDB можна підключити замість цього)
+const users = [
+  {
+    login: "admin",
+    password: "$2b$10$psal/zISslxc1HnDw6kg2O.lhV98FpaVeMOdEL20z2iGy8t7Lu/Cy", // admin123
+    role: "admin"
+  },
+  {
+    login: "central",
+    password: "$2b$10$GpncNen57bIKsATmOGes4.ySN2YZmDqRTvrXmPjWQGej/BxwIo7.m", // central123
+    role: "employer",
+    district: "Центральний"
+  }
+];
+
+// 🟢 Авторизація
+app.post("/login", async (req, res) => {
+  const { login, password } = req.body;
+  const user = users.find(u => u.login === login);
+
+  if (!user) {
+    return res.status(401).json({ error: "❌ Невірний логін або пароль" });
+  }
+
+  const match = await bcrypt.compare(password, user.password);
+  if (!match) {
+    return res.status(401).json({ error: "❌ Невірний логін або пароль" });
+  }
+
+  // Генеруємо JWT
+  const token = jwt.sign({ login: user.login, role: user.role }, SECRET, { expiresIn: "1h" });
+
+  res.json({
+    message: "✅ Авторизація успішна",
+    role: user.role,
+    redirectUrl: "/dashboard",
+    token
+  });
+});
+
+// 🟢 Middleware для перевірки токена
+function authMiddleware(req, res, next) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) return res.status(403).json({ error: "❌ Немає токена" });
+
+  const token = authHeader.split(" ")[1];
+  try {
+    const decoded = jwt.verify(token, SECRET);
+    req.user = decoded;
+    next();
+  } catch (err) {
+    res.status(403).json({ error: "❌ Невірний токен" });
+  }
+}
+
+// 🟢 Dashboard
+app.get("/dashboard", authMiddleware, (req, res) => {
+  res.json({
+    message: "👋 Ласкаво просимо на головну сторінку!",
+    menu: [
+      { name: "📅 Календар", url: "/calendar" },
+      { name: "🧪 Перелік лабораторій", url: "/labs" },
+      { name: "➕ Створити картку лабораторії", url: "/labs/new" }
+    ]
+  });
+});
+
+// 🟢 Календар
+app.get("/calendar", authMiddleware, (req, res) => {
+  res.json({ events: ["Зустріч 10:00", "Перевірка лабораторії 14:00"] });
+});
+
+// 🟢 Перелік лабораторій
+app.get("/labs", authMiddleware, (req, res) => {
+  res.json({ labs: ["Lab A", "Lab B", "Lab C"] });
+});
+
+// 🟢 Створення картки лабораторії
+app.post("/labs/new", authMiddleware, (req, res) => {
+  const { name } = req.body;
+  res.json({ message: `✅ Лабораторію '${name}' створено` });
+});
+
+// 🟢 Запуск сервера
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`✅ Сервер запущено на порті ${PORT}`));
