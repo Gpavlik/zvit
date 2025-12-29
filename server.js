@@ -6,11 +6,16 @@ const bodyParser = require("body-parser");
 const jwt = require("jsonwebtoken");
 
 const app = express();
-app.use(bodyParser.json());
 const PORT = process.env.PORT || 3000;
+const SECRET = process.env.JWT_SECRET || "supersecretkey";
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: ["http://127.0.0.1:5500", "http://localhost:5500"], // дозволені джерела
+  methods: ["GET", "POST", "PUT", "DELETE"],
+  allowedHeaders: ["Content-Type", "Authorization"]
+}));
+app.use(bodyParser.json());
 app.use(express.json());
 
 // 🔗 Підключення до MongoDB Atlas
@@ -59,7 +64,7 @@ const LabSchema = new mongoose.Schema({
 const User = mongoose.model("User", UserSchema);
 const Lab = mongoose.model("Lab", LabSchema);
 
-// 🟢 Реєстрація користувача (з хешуванням пароля)
+// 🟢 Реєстрація користувача
 app.post("/register", async (req, res) => {
   try {
     const { login, password, role, district, territory, districts } = req.body;
@@ -86,133 +91,30 @@ app.post("/login", async (req, res) => {
   const { login, password } = req.body;
   try {
     const user = await User.findOne({ login });
-    if (!user) {
-      return res.status(401).json({ error: "❌ Невірний логін або пароль" });
-    }
+    if (!user) return res.status(401).json({ error: "❌ Невірний логін або пароль" });
 
     const match = await bcrypt.compare(password, user.password);
-    if (!match) {
-      return res.status(401).json({ error: "❌ Невірний логін або пароль" });
-    }
+    if (!match) return res.status(401).json({ error: "❌ Невірний логін або пароль" });
+
+    const token = jwt.sign({ login: user.login, role: user.role }, SECRET, { expiresIn: "1h" });
 
     res.json({
       message: "✅ Авторизація успішна",
       role: user.role,
       territory: user.territory || null,
       district: user.district || null,
-      districts: user.districts || []
+      districts: user.districts || [],
+      redirectUrl: "/dashboard",
+      token
     });
   } catch (err) {
     res.status(500).json({ error: "❌ Помилка сервера" });
   }
 });
+
 // 🟢 Вихід
 app.post("/logout", (req, res) => {
   res.json({ message: "🚪 Ви успішно вийшли з системи" });
-});
-
-// 🟢 Отримати всі лабораторії
-app.get("/labcards", async (req, res) => {
-  try {
-    const labs = await Lab.find();
-    res.json(labs);
-  } catch (err) {
-    res.status(500).json({ error: "❌ Не вдалося отримати лабораторії" });
-  }
-});
-
-// 🟢 Додати/оновити лабораторію
-app.post("/labcards", async (req, res) => {
-  try {
-    const lab = req.body;
-    let existing = await Lab.findOne({ _id: lab._id });
-    if (existing) {
-      await Lab.updateOne({ _id: lab._id }, lab);
-      res.json({ message: "✅ Оновлено", lab });
-    } else {
-      const newLab = new Lab(lab);
-      await newLab.save();
-      res.json({ message: "✅ Додано", lab: newLab });
-    }
-  } catch (err) {
-    res.status(500).json({ error: "❌ Не вдалося зберегти лабораторію" });
-  }
-});
-
-// 🟢 Видалити лабораторію
-app.delete("/labcards/:id", async (req, res) => {
-  try {
-    await Lab.findByIdAndDelete(req.params.id);
-    res.json({ message: `🗑️ Лабораторія ${req.params.id} видалена` });
-  } catch (err) {
-    res.status(500).json({ error: "❌ Не вдалося видалити лабораторію" });
-  }
-});
-
-// 🟢 Лабораторії для конкретного користувача
-app.get("/labcards/user/:login", async (req, res) => {
-  try {
-    const user = await User.findOne({ login: req.params.login });
-    if (!user) return res.status(404).json({ error: "Користувач не знайдений" });
-
-    const labs = await Lab.find();
-
-    if (user.role === "admin") return res.json(labs);
-    if (user.role === "employer") return res.json(labs.filter(l => l.district === user.district));
-    if (user.role === "territorial_manager") return res.json(labs.filter(l => user.districts.includes(l.district)));
-
-    res.json([]);
-  } catch (err) {
-    res.status(500).json({ error: "❌ Помилка сервера" });
-  }
-});
-
-// 🟢 Запуск сервера
-app.listen(PORT, () => {
-  console.log(`✅ Сервер запущено на порті ${PORT}`);
-});
-
-// 🔑 Секрет для JWT
-const SECRET = "supersecretkey";
-
-// 🧪 Тимчасова база користувачів (MongoDB можна підключити замість цього)
-const users = [
-  {
-    login: "admin",
-    password: "$2b$10$psal/zISslxc1HnDw6kg2O.lhV98FpaVeMOdEL20z2iGy8t7Lu/Cy", // admin123
-    role: "admin"
-  },
-  {
-    login: "central",
-    password: "$2b$10$GpncNen57bIKsATmOGes4.ySN2YZmDqRTvrXmPjWQGej/BxwIo7.m", // central123
-    role: "employer",
-    district: "Центральний"
-  }
-];
-
-// 🟢 Авторизація
-app.post("/login", async (req, res) => {
-  const { login, password } = req.body;
-  const user = users.find(u => u.login === login);
-
-  if (!user) {
-    return res.status(401).json({ error: "❌ Невірний логін або пароль" });
-  }
-
-  const match = await bcrypt.compare(password, user.password);
-  if (!match) {
-    return res.status(401).json({ error: "❌ Невірний логін або пароль" });
-  }
-
-  // Генеруємо JWT
-  const token = jwt.sign({ login: user.login, role: user.role }, SECRET, { expiresIn: "1h" });
-
-  res.json({
-    message: "✅ Авторизація успішна",
-    role: user.role,
-    redirectUrl: "/dashboard",
-    token
-  });
 });
 
 // 🟢 Middleware для перевірки токена
@@ -248,16 +150,46 @@ app.get("/calendar", authMiddleware, (req, res) => {
 });
 
 // 🟢 Перелік лабораторій
-app.get("/labs", authMiddleware, (req, res) => {
-  res.json({ labs: ["Lab A", "Lab B", "Lab C"] });
+app.get("/labs", authMiddleware, async (req, res) => {
+  try {
+    const labs = await Lab.find();
+    res.json(labs);
+  } catch (err) {
+    res.status(500).json({ error: "❌ Не вдалося отримати лабораторії" });
+  }
 });
 
 // 🟢 Створення картки лабораторії
-app.post("/labs/new", authMiddleware, (req, res) => {
-  const { name } = req.body;
-  res.json({ message: `✅ Лабораторію '${name}' створено` });
+app.post("/labs/new", authMiddleware, async (req, res) => {
+  try {
+    const { name } = req.body;
+    const newLab = new Lab({ partner: name });
+    await newLab.save();
+    res.json({ message: `✅ Лабораторію '${name}' створено`, lab: newLab });
+  } catch (err) {
+    res.status(500).json({ error: "❌ Не вдалося створити лабораторію" });
+  }
+});
+
+// 🟢 Лабораторії для конкретного користувача
+app.get("/labcards/user/:login", authMiddleware, async (req, res) => {
+  try {
+    const user = await User.findOne({ login: req.params.login });
+    if (!user) return res.status(404).json({ error: "Користувач не знайдений" });
+
+    const labs = await Lab.find();
+
+    if (user.role === "admin") return res.json(labs);
+    if (user.role === "employer") return res.json(labs.filter(l => l.district === user.district));
+    if (user.role === "territorial_manager") return res.json(labs.filter(l => user.districts.includes(l.district)));
+
+    res.json([]);
+  } catch (err) {
+    res.status(500).json({ error: "❌ Помилка сервера" });
+  }
 });
 
 // 🟢 Запуск сервера
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`✅ Сервер запущено на порті ${PORT}`));
+app.listen(PORT, () => {
+  console.log(`✅ Сервер запущено на порті ${PORT}`);
+});
