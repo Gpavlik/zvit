@@ -193,3 +193,13 @@ app.get("/labcards/user/:login", authMiddleware, async (req, res) => {
 app.listen(PORT, () => {
   console.log(`✅ Сервер запущено на порті ${PORT}`);
 });
+// Отримати лабораторію по ЄДРПОУ
+app.get("/labs/:edrpou", authMiddleware, async (req, res) => {
+  try {
+    const lab = await Lab.findOne({ edrpou: req.params.edrpou });
+    if (!lab) return res.status(404).json({ error: "Лабораторія не знайдена" });
+    res.json(lab);
+  } catch (err) {
+    res.status(500).json({ error: "❌ Помилка сервера" });
+  }
+});
