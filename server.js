@@ -10,13 +10,10 @@ const PORT = process.env.PORT || 3000;
 const SECRET = process.env.JWT_SECRET || "supersecretkey";
 
 // Middleware
-app.use(cors({
-  origin: ["http://127.0.0.1:5500", "http://localhost:5500"], // дозволені джерела
-  methods: ["GET", "POST", "PUT", "DELETE"],
-  allowedHeaders: ["Content-Type", "Authorization"]
-}));
+app.use(cors()); // дозволяє будь-яке джерело
 app.use(bodyParser.json());
 app.use(express.json());
+
 
 // 🔗 Підключення до MongoDB Atlas
 mongoose.connect(process.env.MONGODB_URI)
