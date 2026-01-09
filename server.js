@@ -47,6 +47,11 @@ const LabSchema = new mongoose.Schema({
     kp: String,
     replacedParts: String
   }],
+  reagents: [{
+  name: String,
+  quantity: Number,
+  lastPurchase: Date
+}],
   tasks: [{
     title: String,
     date: Date,
