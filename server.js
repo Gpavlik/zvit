@@ -4,7 +4,7 @@ const mongoose = require("mongoose");
 const bcrypt = require("bcrypt");
 const bodyParser = require("body-parser");
 const jwt = require("jsonwebtoken");
-const fetch = require("node-fetch");
+
 
 const app = express();
 const PORT = process.env.PORT || 3000;
