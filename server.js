@@ -160,3 +160,35 @@ async function geocodeAndSave(lab) {
 app.listen(PORT, () => {
   console.log(`✅ Сервер запущено на порті ${PORT}`);
 });
+// 🟢 Створення картки лабораторії з автоматичним геокодуванням
+app.post("/labs/new", authMiddleware, async (req, res) => {
+  try {
+    const { partner, region, city, institution, edrpou } = req.body;
+
+    // створюємо лабораторію
+    const newLab = new Lab({ partner, region, city, institution, edrpou });
+
+    // геокодування адреси
+    const query = `${city} ${institution}`;
+    const orsRes = await fetch(
+      `https://api.openrouteservice.org/geocode/search?api_key=${process.env.ORS_TOKEN}&text=${encodeURIComponent(query)}`
+    );
+    const data = await orsRes.json();
+    const coords = data.features[0]?.geometry?.coordinates;
+
+    if (coords) {
+      newLab.lng = coords[0];
+      newLab.lat = coords[1];
+    }
+
+    await newLab.save();
+
+    res.json({
+      message: `✅ Лабораторію '${partner}' створено`,
+      lab: newLab
+    });
+  } catch (err) {
+    console.error("❌ Помилка при створенні лабораторії:", err);
+    res.status(500).json({ error: "❌ Не вдалося створити лабораторію" });
+  }
+});
