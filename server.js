@@ -4,16 +4,16 @@ const mongoose = require("mongoose");
 const bcrypt = require("bcrypt");
 const bodyParser = require("body-parser");
 const jwt = require("jsonwebtoken");
+const fetch = require("node-fetch");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const SECRET = process.env.JWT_SECRET || "supersecretkey";
 
 // Middleware
-app.use(cors()); // дозволяє будь-яке джерело
+app.use(cors());
 app.use(bodyParser.json());
 app.use(express.json());
-
 
 // 🔗 Підключення до MongoDB Atlas
 mongoose.connect(process.env.MONGODB_URI)
@@ -23,7 +23,7 @@ mongoose.connect(process.env.MONGODB_URI)
 // 🟢 Схеми
 const UserSchema = new mongoose.Schema({
   login: { type: String, required: true, unique: true },
-  password: { type: String, required: true }, // зберігаємо хеш
+  password: { type: String, required: true },
   role: String,
   district: String,
   territory: String,
@@ -40,6 +40,8 @@ const LabSchema = new mongoose.Schema({
   phone: String,
   edrpou: String,
   manager: String,
+  lat: Number,
+  lng: Number,
   devices: [{
     device: String,
     soldDate: Date,
@@ -48,10 +50,10 @@ const LabSchema = new mongoose.Schema({
     replacedParts: String
   }],
   reagents: [{
-  name: String,
-  quantity: Number,
-  lastPurchase: Date
-}],
+    name: String,
+    quantity: Number,
+    lastPurchase: Date
+  }],
   tasks: [{
     title: String,
     date: Date,
@@ -66,21 +68,12 @@ const LabSchema = new mongoose.Schema({
 const User = mongoose.model("User", UserSchema);
 const Lab = mongoose.model("Lab", LabSchema);
 
-// 🟢 Реєстрація користувача
+// 🟢 Реєстрація
 app.post("/register", async (req, res) => {
   try {
     const { login, password, role, district, territory, districts } = req.body;
     const hashedPassword = await bcrypt.hash(password, 10);
-
-    const newUser = new User({
-      login,
-      password: hashedPassword,
-      role,
-      district,
-      territory,
-      districts
-    });
-
+    const newUser = new User({ login, password: hashedPassword, role, district, territory, districts });
     await newUser.save();
     res.json({ message: "✅ Користувач створений" });
   } catch (err) {
@@ -94,36 +87,19 @@ app.post("/login", async (req, res) => {
   try {
     const user = await User.findOne({ login });
     if (!user) return res.status(401).json({ error: "❌ Невірний логін або пароль" });
-
     const match = await bcrypt.compare(password, user.password);
     if (!match) return res.status(401).json({ error: "❌ Невірний логін або пароль" });
-
     const token = jwt.sign({ login: user.login, role: user.role }, SECRET, { expiresIn: "1h" });
-
-    res.json({
-      message: "✅ Авторизація успішна",
-      role: user.role,
-      territory: user.territory || null,
-      district: user.district || null,
-      districts: user.districts || [],
-      redirectUrl: "/dashboard",
-      token
-    });
+    res.json({ message: "✅ Авторизація успішна", role: user.role, token });
   } catch (err) {
     res.status(500).json({ error: "❌ Помилка сервера" });
   }
 });
 
-// 🟢 Вихід
-app.post("/logout", (req, res) => {
-  res.json({ message: "🚪 Ви успішно вийшли з системи" });
-});
-
-// 🟢 Middleware для перевірки токена
+// 🟢 Middleware для токена
 function authMiddleware(req, res, next) {
   const authHeader = req.headers.authorization;
   if (!authHeader) return res.status(403).json({ error: "❌ Немає токена" });
-
   const token = authHeader.split(" ")[1];
   try {
     const decoded = jwt.verify(token, SECRET);
@@ -134,24 +110,7 @@ function authMiddleware(req, res, next) {
   }
 }
 
-// 🟢 Dashboard
-app.get("/dashboard", authMiddleware, (req, res) => {
-  res.json({
-    message: "👋 Ласкаво просимо на головну сторінку!",
-    menu: [
-      { name: "📅 Календар", url: "/calendar" },
-      { name: "🧪 Перелік лабораторій", url: "/labs" },
-      { name: "➕ Створити картку лабораторії", url: "/labs/new" }
-    ]
-  });
-});
-
-// 🟢 Календар
-app.get("/calendar", authMiddleware, (req, res) => {
-  res.json({ events: ["Зустріч 10:00", "Перевірка лабораторії 14:00"] });
-});
-
-// 🟢 Перелік лабораторій
+// 🟢 Лабораторії
 app.get("/labs", authMiddleware, async (req, res) => {
   try {
     const labs = await Lab.find();
@@ -161,41 +120,6 @@ app.get("/labs", authMiddleware, async (req, res) => {
   }
 });
 
-// 🟢 Створення картки лабораторії
-app.post("/labs/new", authMiddleware, async (req, res) => {
-  try {
-    const { name } = req.body;
-    const newLab = new Lab({ partner: name });
-    await newLab.save();
-    res.json({ message: `✅ Лабораторію '${name}' створено`, lab: newLab });
-  } catch (err) {
-    res.status(500).json({ error: "❌ Не вдалося створити лабораторію" });
-  }
-});
-
-// 🟢 Лабораторії для конкретного користувача
-app.get("/labcards/user/:login", authMiddleware, async (req, res) => {
-  try {
-    const user = await User.findOne({ login: req.params.login });
-    if (!user) return res.status(404).json({ error: "Користувач не знайдений" });
-
-    const labs = await Lab.find();
-
-    if (user.role === "admin") return res.json(labs);
-    if (user.role === "employer") return res.json(labs.filter(l => l.district === user.district));
-    if (user.role === "territorial_manager") return res.json(labs.filter(l => user.districts.includes(l.district)));
-
-    res.json([]);
-  } catch (err) {
-    res.status(500).json({ error: "❌ Помилка сервера" });
-  }
-});
-
-// 🟢 Запуск сервера
-app.listen(PORT, () => {
-  console.log(`✅ Сервер запущено на порті ${PORT}`);
-});
-// Отримати лабораторію по ЄДРПОУ
 app.get("/labs/:edrpou", authMiddleware, async (req, res) => {
   try {
     const lab = await Lab.findOne({ edrpou: req.params.edrpou });
@@ -204,4 +128,35 @@ app.get("/labs/:edrpou", authMiddleware, async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: "❌ Помилка сервера" });
   }
+});
+
+app.post("/labs/new", authMiddleware, async (req, res) => {
+  try {
+    const { partner, city, institution, edrpou } = req.body;
+    const newLab = new Lab({ partner, city, institution, edrpou });
+    await newLab.save();
+    res.json({ message: "✅ Лабораторію створено", lab: newLab });
+  } catch (err) {
+    res.status(500).json({ error: "❌ Не вдалося створити лабораторію" });
+  }
+});
+
+// 🟢 Геокодування і збереження
+async function geocodeAndSave(lab) {
+  if (lab.lat && lab.lng) return lab;
+  const query = `${lab.city} ${lab.institution}`;
+  const orsRes = await fetch(`https://api.openrouteservice.org/geocode/search?api_key=${process.env.ORS_TOKEN}&text=${encodeURIComponent(query)}`);
+  const data = await orsRes.json();
+  const coords = data.features[0]?.geometry?.coordinates;
+  if (coords) {
+    lab.lng = coords[0];
+    lab.lat = coords[1];
+    await lab.save();
+  }
+  return lab;
+}
+
+// 🟢 Запуск сервера
+app.listen(PORT, () => {
+  console.log(`✅ Сервер запущено на порті ${PORT}`);
 });
