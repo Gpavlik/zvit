@@ -192,3 +192,17 @@ app.post("/labs/new", authMiddleware, async (req, res) => {
     res.status(500).json({ error: "❌ Не вдалося створити лабораторію" });
   }
 });
+// Масове оновлення координат
+app.post("/labs/geocode-all", authMiddleware, async (req, res) => {
+  try {
+    const labs = await Lab.find();
+    const updated = [];
+    for (const lab of labs) {
+      const geoLab = await geocodeAndSave(lab);
+      updated.push(geoLab);
+    }
+    res.json({ message: "✅ Координати оновлено", count: updated.length });
+  } catch (err) {
+    res.status(500).json({ error: "❌ Помилка при оновленні координат" });
+  }
+});
