@@ -206,3 +206,35 @@ app.post("/labs/geocode-all", authMiddleware, async (req, res) => {
     res.status(500).json({ error: "❌ Помилка при оновленні координат" });
   }
 });
+app.put("/labs/:id", authMiddleware, async (req, res) => {
+  try {
+    const lab = await Lab.findById(req.params.id);
+    if (!lab) return res.status(404).json({ error: "Лабораторія не знайдена" });
+
+    // оновлюємо поля
+    lab.partner = req.body.partner || lab.partner;
+    lab.region = req.body.region || lab.region;
+    lab.city = req.body.city || lab.city;
+    lab.institution = req.body.institution || lab.institution;
+    lab.address = req.body.address || lab.address;
+
+    // якщо змінилася адреса → оновлюємо координати
+    if (req.body.region || req.body.city || req.body.address || req.body.institution) {
+      const query = `${lab.region || ""} ${lab.city || ""} ${lab.address || lab.institution || ""}`;
+      const resGeo = await fetch(
+        `https://api.openrouteservice.org/geocode/search?api_key=${process.env.ORS_TOKEN}&text=${encodeURIComponent(query)}`
+      );
+      const data = await resGeo.json();
+      const coords = data.features[0]?.geometry?.coordinates;
+      if (coords) {
+        lab.lng = coords[0];
+        lab.lat = coords[1];
+      }
+    }
+
+    await lab.save();
+    res.json({ message: "✅ Лабораторію оновлено", lab });
+  } catch (err) {
+    res.status(500).json({ error: "❌ Помилка при оновленні лабораторії" });
+  }
+});
