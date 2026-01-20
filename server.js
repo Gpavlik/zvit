@@ -277,17 +277,25 @@ app.post("/purchases", authMiddleware, async (req, res) => {
     const sinceDate = new Date();
     sinceDate.setDate(sinceDate.getDate() - (days || 90));
 
-    const purchases = await Purchase.find({
-      labId: { $in: labIds },
-      date: { $gte: sinceDate }
-    }).populate("labId", "partner city institution");
+    const labs = await Lab.find({ _id: { $in: labIds } });
 
-    res.json(purchases.map(p => ({
-      labName: p.labId?.institution || "—",
-      item: p.item,
-      amount: p.amount,
-      date: p.date
-    })));
+    const purchases = [];
+    labs.forEach(lab => {
+      (lab.devices || []).forEach(device => {
+        (device.reagents || []).forEach(r => {
+          if (new Date(r.date) >= sinceDate) {
+            purchases.push({
+              labName: lab.institution,
+              item: r.name,
+              amount: r.quantity,
+              date: r.date
+            });
+          }
+        });
+      });
+    });
+
+    res.json(purchases);
   } catch (err) {
     console.error("Помилка /purchases:", err);
     res.status(500).json({ error: "Помилка отримання закупівель" });
