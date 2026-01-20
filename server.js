@@ -64,16 +64,8 @@ const LabSchema = new mongoose.Schema({
   }]
 });
 
-const PurchaseSchema = new mongoose.Schema({
-  labId: { type: mongoose.Schema.Types.ObjectId, ref: "Lab" },
-  item: String,
-  amount: Number,
-  date: { type: Date, default: Date.now }
-});
-
 const User = mongoose.model("User", UserSchema);
 const Lab = mongoose.model("Lab", LabSchema);
-const Purchase = mongoose.model("Purchase", PurchaseSchema);
 
 // 🟢 Реєстрація
 app.post("/register", async (req, res) => {
@@ -148,17 +140,14 @@ app.post("/labs/new", authMiddleware, async (req, res) => {
   }
 });
 
-// 🟢 Закупівлі (витягуємо з Purchase або з reagents)
+// 🟢 Закупівлі — остання закупівля для кожної лабораторії
 app.post("/purchases", authMiddleware, async (req, res) => {
   try {
     const { labIds } = req.body;
-
     const labs = await Lab.find({ _id: { $in: labIds } });
 
-    const purchases = [];
-    labs.forEach(lab => {
+    const purchases = labs.map(lab => {
       let lastPurchase = null;
-
       (lab.devices || []).forEach(device => {
         (device.reagents || []).forEach(r => {
           if (!lastPurchase || new Date(r.date) > new Date(lastPurchase.date)) {
@@ -167,12 +156,12 @@ app.post("/purchases", authMiddleware, async (req, res) => {
         });
       });
 
-      purchases.push({
+      return {
         labName: lab.institution,
         item: lastPurchase?.name || "—",
         amount: lastPurchase?.quantity || "—",
         date: lastPurchase?.date || "—"
-      });
+      };
     });
 
     res.json(purchases);
@@ -182,9 +171,10 @@ app.post("/purchases", authMiddleware, async (req, res) => {
   }
 });
 
+// 🟢 Health check для Railway
+app.get("/", (req, res) => res.send("API працює ✅"));
 
 // 🟢 Запуск сервера
-app.get("/", (req, res) => res.send("API працює ✅"));
 app.listen(PORT, () => {
   console.log(`✅ Сервер запущено на порті ${PORT}`);
 });
