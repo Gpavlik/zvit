@@ -88,7 +88,7 @@ app.post("/login", async (req, res) => {
     if (!user) return res.status(401).json({ error: "❌ Невірний логін або пароль" });
     const match = await bcrypt.compare(password, user.password);
     if (!match) return res.status(401).json({ error: "❌ Невірний логін або пароль" });
-    const token = jwt.sign({ login: user.login, role: user.role }, SECRET, { expiresIn: "1h" });
+    const token = jwt.sign({ login: user.login, role: user.role }, SECRET, { expiresIn: "1d" });
     res.json({ message: "✅ Авторизація успішна", role: user.role, token });
   } catch (err) {
     res.status(500).json({ error: "❌ Помилка сервера" });
