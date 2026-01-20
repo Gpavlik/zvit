@@ -8,6 +8,8 @@ const jwt = require("jsonwebtoken");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`✅ Сервер запущено на порті ${PORT}`));
+
 const SECRET = process.env.JWT_SECRET || "supersecretkey";
 
 // Middleware
