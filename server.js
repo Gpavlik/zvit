@@ -5,11 +5,8 @@ const bcrypt = require("bcrypt");
 const bodyParser = require("body-parser");
 const jwt = require("jsonwebtoken");
 
-
 const app = express();
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`✅ Сервер запущено на порті ${PORT}`));
-
 const SECRET = process.env.JWT_SECRET || "supersecretkey";
 
 // Middleware
@@ -49,12 +46,12 @@ const LabSchema = new mongoose.Schema({
     soldDate: Date,
     lastService: Date,
     kp: String,
-    replacedParts: String
-  }],
-  reagents: [{
-    name: String,
-    quantity: Number,
-    lastPurchase: Date
+    replacedParts: String,
+    reagents: [{
+      name: String,
+      quantity: Number,
+      date: Date
+    }]
   }],
   tasks: [{
     title: String,
@@ -67,8 +64,16 @@ const LabSchema = new mongoose.Schema({
   }]
 });
 
+const PurchaseSchema = new mongoose.Schema({
+  labId: { type: mongoose.Schema.Types.ObjectId, ref: "Lab" },
+  item: String,
+  amount: Number,
+  date: { type: Date, default: Date.now }
+});
+
 const User = mongoose.model("User", UserSchema);
 const Lab = mongoose.model("Lab", LabSchema);
+const Purchase = mongoose.model("Purchase", PurchaseSchema);
 
 // 🟢 Реєстрація
 app.post("/register", async (req, res) => {
@@ -143,113 +148,36 @@ app.post("/labs/new", authMiddleware, async (req, res) => {
   }
 });
 
-// 🟢 Геокодування і збереження
-async function geocodeAndSave(lab) {
-  if (lab.lat && lab.lng) return lab;
-  const query = `${lab.city} ${lab.institution}`;
-  const orsRes = await fetch(`https://api.openrouteservice.org/geocode/search?api_key=${process.env.ORS_TOKEN}&text=${encodeURIComponent(query)}`);
-  const data = await orsRes.json();
-  const coords = data.features[0]?.geometry?.coordinates;
-  if (coords) {
-    lab.lng = coords[0];
-    lab.lat = coords[1];
-    await lab.save();
-  }
-  return lab;
-}
-
-// 🟢 Запуск сервера
-app.listen(PORT, () => {
-  console.log(`✅ Сервер запущено на порті ${PORT}`);
-});
-// 🟢 Створення картки лабораторії з автоматичним геокодуванням
-app.post("/labs/new", authMiddleware, async (req, res) => {
-  try {
-    const { partner, region, city, institution, edrpou } = req.body;
-
-    // створюємо лабораторію
-    const newLab = new Lab({ partner, region, city, institution, edrpou });
-
-    // геокодування адреси
-    const query = `${city} ${institution}`;
-    const orsRes = await fetch(
-      `https://api.openrouteservice.org/geocode/search?api_key=${process.env.ORS_TOKEN}&text=${encodeURIComponent(query)}`
-    );
-    const data = await orsRes.json();
-    const coords = data.features[0]?.geometry?.coordinates;
-
-    if (coords) {
-      newLab.lng = coords[0];
-      newLab.lat = coords[1];
-    }
-
-    await newLab.save();
-
-    res.json({
-      message: `✅ Лабораторію '${partner}' створено`,
-      lab: newLab
-    });
-  } catch (err) {
-    console.error("❌ Помилка при створенні лабораторії:", err);
-    res.status(500).json({ error: "❌ Не вдалося створити лабораторію" });
-  }
-});
-// Масове оновлення координат
-app.post("/labs/geocode-all", authMiddleware, async (req, res) => {
-  try {
-    const labs = await Lab.find();
-    const updated = [];
-    for (const lab of labs) {
-      const geoLab = await geocodeAndSave(lab);
-      updated.push(geoLab);
-    }
-    res.json({ message: "✅ Координати оновлено", count: updated.length });
-  } catch (err) {
-    res.status(500).json({ error: "❌ Помилка при оновленні координат" });
-  }
-});
-app.put("/labs/:id", authMiddleware, async (req, res) => {
-  try {
-    const lab = await Lab.findById(req.params.id);
-    if (!lab) return res.status(404).json({ error: "Лабораторія не знайдена" });
-
-    // оновлюємо поля
-    lab.partner = req.body.partner || lab.partner;
-    lab.region = req.body.region || lab.region;
-    lab.city = req.body.city || lab.city;
-    lab.institution = req.body.institution || lab.institution;
-    lab.address = req.body.address || lab.address;
-
-    // якщо змінилася адреса → оновлюємо координати
-    if (req.body.region || req.body.city || req.body.address || req.body.institution) {
-      const query = `${lab.region || ""} ${lab.city || ""} ${lab.address || lab.institution || ""}`;
-      const resGeo = await fetch(
-        `https://api.openrouteservice.org/geocode/search?api_key=${process.env.ORS_TOKEN}&text=${encodeURIComponent(query)}`
-      );
-      const data = await resGeo.json();
-      const coords = data.features[0]?.geometry?.coordinates;
-      if (coords) {
-        lab.lng = coords[0];
-        lab.lat = coords[1];
-      }
-    }
-
-    await lab.save();
-    res.json({ message: "✅ Лабораторію оновлено", lab });
-  } catch (err) {
-    res.status(500).json({ error: "❌ Помилка при оновленні лабораторії" });
-  }
-});
+// 🟢 Закупівлі (витягуємо з Purchase або з reagents)
 app.post("/purchases", authMiddleware, async (req, res) => {
   try {
     const { labIds, days } = req.body;
     const sinceDate = new Date();
     sinceDate.setDate(sinceDate.getDate() - (days || 90));
 
+    // варіант 1: якщо є окрема колекція Purchase
     const purchases = await Purchase.find({
       labId: { $in: labIds },
       date: { $gte: sinceDate }
     }).populate("labId", "partner city institution");
+
+    // варіант 2: якщо закупівлі зберігаються всередині Lab.devices.reagents
+    // const labs = await Lab.find({ _id: { $in: labIds } });
+    // const purchases = [];
+    // labs.forEach(lab => {
+    //   (lab.devices || []).forEach(device => {
+    //     (device.reagents || []).forEach(r => {
+    //       if (new Date(r.date) >= sinceDate) {
+    //         purchases.push({
+    //           labName: lab.institution,
+    //           item: r.name,
+    //           amount: r.quantity,
+    //           date: r.date
+    //         });
+    //       }
+    //     });
+    //   });
+    // });
 
     res.json(purchases.map(p => ({
       labName: p.labId?.institution || "—",
@@ -258,48 +186,13 @@ app.post("/purchases", authMiddleware, async (req, res) => {
       date: p.date
     })));
   } catch (err) {
-    res.status(500).json({ error: "Помилка отримання закупівель" });
-  }
-});
-
-const PurchaseSchema = new mongoose.Schema({
-  labId: { type: mongoose.Schema.Types.ObjectId, ref: "Lab" },
-  item: String,
-  amount: Number,
-  date: { type: Date, default: Date.now }
-});
-
-const Purchase = mongoose.model("Purchase", PurchaseSchema);
-module.exports = Purchase;
-const Purchase = require("./models/Purchase");
-
-app.post("/purchases", authMiddleware, async (req, res) => {
-  try {
-    const { labIds, days } = req.body;
-    const sinceDate = new Date();
-    sinceDate.setDate(sinceDate.getDate() - (days || 90));
-
-    const labs = await Lab.find({ _id: { $in: labIds } });
-
-    const purchases = [];
-    labs.forEach(lab => {
-      (lab.devices || []).forEach(device => {
-        (device.reagents || []).forEach(r => {
-          if (new Date(r.date) >= sinceDate) {
-            purchases.push({
-              labName: lab.institution,
-              item: r.name,
-              amount: r.quantity,
-              date: r.date
-            });
-          }
-        });
-      });
-    });
-
-    res.json(purchases);
-  } catch (err) {
     console.error("Помилка /purchases:", err);
     res.status(500).json({ error: "Помилка отримання закупівель" });
   }
+});
+
+// 🟢 Запуск сервера
+app.get("/", (req, res) => res.send("API працює ✅"));
+app.listen(PORT, () => {
+  console.log(`✅ Сервер запущено на порті ${PORT}`);
 });
