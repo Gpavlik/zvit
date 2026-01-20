@@ -259,3 +259,37 @@ app.post("/purchases", authMiddleware, async (req, res) => {
     res.status(500).json({ error: "Помилка отримання закупівель" });
   }
 });
+
+const PurchaseSchema = new mongoose.Schema({
+  labId: { type: mongoose.Schema.Types.ObjectId, ref: "Lab" },
+  item: String,
+  amount: Number,
+  date: { type: Date, default: Date.now }
+});
+
+const Purchase = mongoose.model("Purchase", PurchaseSchema);
+module.exports = Purchase;
+const Purchase = require("./models/Purchase");
+
+app.post("/purchases", authMiddleware, async (req, res) => {
+  try {
+    const { labIds, days } = req.body;
+    const sinceDate = new Date();
+    sinceDate.setDate(sinceDate.getDate() - (days || 90));
+
+    const purchases = await Purchase.find({
+      labId: { $in: labIds },
+      date: { $gte: sinceDate }
+    }).populate("labId", "partner city institution");
+
+    res.json(purchases.map(p => ({
+      labName: p.labId?.institution || "—",
+      item: p.item,
+      amount: p.amount,
+      date: p.date
+    })));
+  } catch (err) {
+    console.error("Помилка /purchases:", err);
+    res.status(500).json({ error: "Помилка отримання закупівель" });
+  }
+});
