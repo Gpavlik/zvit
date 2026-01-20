@@ -238,3 +238,24 @@ app.put("/labs/:id", authMiddleware, async (req, res) => {
     res.status(500).json({ error: "❌ Помилка при оновленні лабораторії" });
   }
 });
+app.post("/purchases", authMiddleware, async (req, res) => {
+  try {
+    const { labIds, days } = req.body;
+    const sinceDate = new Date();
+    sinceDate.setDate(sinceDate.getDate() - (days || 90));
+
+    const purchases = await Purchase.find({
+      labId: { $in: labIds },
+      date: { $gte: sinceDate }
+    }).populate("labId", "partner city institution");
+
+    res.json(purchases.map(p => ({
+      labName: p.labId?.institution || "—",
+      item: p.item,
+      amount: p.amount,
+      date: p.date
+    })));
+  } catch (err) {
+    res.status(500).json({ error: "Помилка отримання закупівель" });
+  }
+});
