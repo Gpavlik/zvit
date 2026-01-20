@@ -151,45 +151,37 @@ app.post("/labs/new", authMiddleware, async (req, res) => {
 // 🟢 Закупівлі (витягуємо з Purchase або з reagents)
 app.post("/purchases", authMiddleware, async (req, res) => {
   try {
-    const { labIds, days } = req.body;
-    const sinceDate = new Date();
-    sinceDate.setDate(sinceDate.getDate() - (days || 90));
+    const { labIds } = req.body;
 
-    // варіант 1: якщо є окрема колекція Purchase
-    const purchases = await Purchase.find({
-      labId: { $in: labIds },
-      date: { $gte: sinceDate }
-    }).populate("labId", "partner city institution");
+    const labs = await Lab.find({ _id: { $in: labIds } });
 
-    // варіант 2: якщо закупівлі зберігаються всередині Lab.devices.reagents
-    // const labs = await Lab.find({ _id: { $in: labIds } });
-    // const purchases = [];
-    // labs.forEach(lab => {
-    //   (lab.devices || []).forEach(device => {
-    //     (device.reagents || []).forEach(r => {
-    //       if (new Date(r.date) >= sinceDate) {
-    //         purchases.push({
-    //           labName: lab.institution,
-    //           item: r.name,
-    //           amount: r.quantity,
-    //           date: r.date
-    //         });
-    //       }
-    //     });
-    //   });
-    // });
+    const purchases = [];
+    labs.forEach(lab => {
+      let lastPurchase = null;
 
-    res.json(purchases.map(p => ({
-      labName: p.labId?.institution || "—",
-      item: p.item,
-      amount: p.amount,
-      date: p.date
-    })));
+      (lab.devices || []).forEach(device => {
+        (device.reagents || []).forEach(r => {
+          if (!lastPurchase || new Date(r.date) > new Date(lastPurchase.date)) {
+            lastPurchase = r;
+          }
+        });
+      });
+
+      purchases.push({
+        labName: lab.institution,
+        item: lastPurchase?.name || "—",
+        amount: lastPurchase?.quantity || "—",
+        date: lastPurchase?.date || "—"
+      });
+    });
+
+    res.json(purchases);
   } catch (err) {
     console.error("Помилка /purchases:", err);
     res.status(500).json({ error: "Помилка отримання закупівель" });
   }
 });
+
 
 // 🟢 Запуск сервера
 app.get("/", (req, res) => res.send("API працює ✅"));
