@@ -235,4 +235,79 @@ app.patch("/visits/:id/cancel", authMiddleware, async (req, res) => {
   }
 });
 
-app.patch("/visits/:id/reschedule", authMiddleware
+// Перенести візит
+app.patch("/visits/:id/reschedule", authMiddleware, async (req, res) => {
+  try {
+    const { newDate } = req.body;
+    const visit = await Visit.findByIdAndUpdate(
+      req.params.id,
+      { status: "rescheduled", rescheduledDate: newDate },
+      { new: true }
+    );
+    if (!visit) return res.status(404).json({ error: "Візит не знайдено" });
+    res.json(visit);
+  } catch (err) {
+    res.status(500).json({ error: "❌ Помилка при перенесенні візиту" });
+  }
+});
+
+// Додати замовлення під час візиту
+app.post("/visits/:id/orders", authMiddleware, async (req, res) => {
+  try {
+    const { type, name, quantity } = req.body;
+    const visit = await Visit.findById(req.params.id);
+    if (!visit) return res.status(404).json({ error: "Візит не знайдено" });
+
+    visit.orders.push({ type, name, quantity });
+    await visit.save();
+    res.json(visit);
+  } catch (err) {
+    res.status(500).json({ error: "❌ Помилка при додаванні замовлення" });
+  }
+});
+
+// ==========================
+// Закупівлі — остання закупівля для кожної лабораторії
+// ==========================
+app.post("/purchases", authMiddleware, async (req, res) => {
+  try {
+    const { labIds } = req.body;
+    const labs = await Lab.find({ _id: { $in: labIds } });
+
+    const purchases = labs.map(lab => {
+      let lastPurchase = null;
+      (lab.devices || []).forEach(device => {
+        (device.reagents || []).forEach(r => {
+          if (!lastPurchase || new Date(r.date) > new Date(lastPurchase.date)) {
+            lastPurchase = r;
+          }
+        });
+      });
+
+      return {
+        labName: lab.institution,
+        item: lastPurchase?.name || "—",
+        amount: lastPurchase?.quantity || "—",
+        date: lastPurchase?.date || "—"
+      };
+    });
+
+    res.json(purchases);
+  } catch (err) {
+    console.error("Помилка /purchases:", err);
+    res.status(500).json({ error: "Помилка отримання закупівель" });
+  }
+});
+
+// ==========================
+// Health check для Railway
+// ==========================
+app.get("/", (req, res) => res.send("API працює ✅"));
+
+// ==========================
+// Запуск сервера
+// ==========================
+app.listen(PORT, () => {
+  console.log(`✅ Сервер запущено на порті ${PORT}`);
+});
+
