@@ -1,3 +1,6 @@
+// ==========================
+// Імпорти
+// ==========================
 const express = require("express");
 const cors = require("cors");
 const mongoose = require("mongoose");
@@ -9,9 +12,11 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const SECRET = process.env.JWT_SECRET || "supersecretkey";
 
+// ==========================
 // Middleware
+// ==========================
 app.use(cors({
-  origin: "*", // або вказати конкретно: "http://127.0.0.1:5500"
+  origin: ["http://127.0.0.1:5500"], // для локальної розробки
   methods: ["GET", "POST", "PATCH", "DELETE"],
   allowedHeaders: ["Content-Type", "Authorization"]
 }));
@@ -19,12 +24,16 @@ app.use(cors({
 app.use(bodyParser.json());
 app.use(express.json());
 
-// 🔗 Підключення до MongoDB Atlas
+// ==========================
+// Підключення до MongoDB Atlas
+// ==========================
 mongoose.connect(process.env.MONGODB_URI)
   .then(() => console.log("✅ Підключено до MongoDB Atlas"))
   .catch(err => console.error("❌ Помилка MongoDB:", err));
 
-// 🟢 Схеми
+// ==========================
+// Схеми
+// ==========================
 const UserSchema = new mongoose.Schema({
   login: { type: String, required: true, unique: true },
   password: { type: String, required: true },
@@ -69,12 +78,8 @@ const LabSchema = new mongoose.Schema({
   }]
 });
 
-const visitSchema = new mongoose.Schema({
-  labId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "Lab",
-    required: true
-  },
+const VisitSchema = new mongoose.Schema({
+  labId: { type: mongoose.Schema.Types.ObjectId, ref: "Lab", required: true },
   date: { type: Date, required: true },
   status: {
     type: String,
@@ -82,30 +87,26 @@ const visitSchema = new mongoose.Schema({
     default: "planned"
   },
   manager: { type: String, required: true },
-  notes: { type: String },
-
-  // якщо переносимо — нова дата
-  rescheduledDate: { type: Date },
-
-  // замовлення під час візиту
+  notes: String,
+  rescheduledDate: Date,
   orders: [{
-    type: {
-      type: String, // "reagent" або "device"
-      enum: ["reagent", "device"]
-    },
+    type: { type: String, enum: ["reagent", "device"] },
     name: String,
     quantity: Number
   }],
-
   createdAt: { type: Date, default: Date.now }
 });
 
-module.exports = mongoose.model("Visit", visitSchema);
-
+// ==========================
+// Моделі
+// ==========================
 const User = mongoose.model("User", UserSchema);
 const Lab = mongoose.model("Lab", LabSchema);
+const Visit = mongoose.model("Visit", VisitSchema);
 
-// 🟢 Реєстрація
+// ==========================
+// Реєстрація / Логін
+// ==========================
 app.post("/register", async (req, res) => {
   try {
     const { login, password, role, district, territory, districts } = req.body;
@@ -118,7 +119,6 @@ app.post("/register", async (req, res) => {
   }
 });
 
-// 🟢 Авторизація
 app.post("/login", async (req, res) => {
   const { login, password } = req.body;
   try {
@@ -133,7 +133,9 @@ app.post("/login", async (req, res) => {
   }
 });
 
-// 🟢 Middleware для токена
+// ==========================
+// Middleware для токена
+// ==========================
 function authMiddleware(req, res, next) {
   const authHeader = req.headers.authorization;
   if (!authHeader) return res.status(403).json({ error: "❌ Немає токена" });
@@ -147,7 +149,9 @@ function authMiddleware(req, res, next) {
   }
 }
 
-// 🟢 Лабораторії
+// ==========================
+// Лабораторії
+// ==========================
 app.get("/labs", authMiddleware, async (req, res) => {
   try {
     const labs = await Lab.find();
@@ -178,86 +182,57 @@ app.post("/labs/new", authMiddleware, async (req, res) => {
   }
 });
 
-// 🟢 Закупівлі — остання закупівля для кожної лабораторії
-app.post("/purchases", authMiddleware, async (req, res) => {
+// ==========================
+// Візити
+// ==========================
+app.get("/visits", authMiddleware, async (req, res) => {
   try {
-    const { labIds } = req.body;
-    const labs = await Lab.find({ _id: { $in: labIds } });
-
-    const purchases = labs.map(lab => {
-      let lastPurchase = null;
-      (lab.devices || []).forEach(device => {
-        (device.reagents || []).forEach(r => {
-          if (!lastPurchase || new Date(r.date) > new Date(lastPurchase.date)) {
-            lastPurchase = r;
-          }
-        });
-      });
-
-      return {
-        labName: lab.institution,
-        item: lastPurchase?.name || "—",
-        amount: lastPurchase?.quantity || "—",
-        date: lastPurchase?.date || "—"
-      };
-    });
-
-    res.json(purchases);
+    const visits = await Visit.find().populate("labId");
+    res.json(visits);
   } catch (err) {
-    console.error("Помилка /purchases:", err);
-    res.status(500).json({ error: "Помилка отримання закупівель" });
+    res.status(500).json({ error: "❌ Помилка при отриманні візитів" });
   }
 });
 
-// 🟢 Health check для Railway
-app.get("/", (req, res) => res.send("API працює ✅"));
-
-// 🟢 Запуск сервера
-app.listen(PORT, () => {
-  console.log(`✅ Сервер запущено на порті ${PORT}`);
-});
-// Запланувати візит
 app.post("/visits", authMiddleware, async (req, res) => {
-  const { labId, date, manager, notes } = req.body;
-  const visit = new Visit({ labId, date, manager, notes, status: "planned" });
-  await visit.save();
-  res.json(visit);
+  try {
+    const { labId, date, manager, notes } = req.body;
+    const visit = new Visit({ labId, date, manager, notes, status: "planned" });
+    await visit.save();
+    res.json(visit);
+  } catch (err) {
+    res.status(500).json({ error: "❌ Помилка при створенні візиту" });
+  }
 });
 
-// Почати візит
 app.patch("/visits/:id/start", authMiddleware, async (req, res) => {
-  const visit = await Visit.findByIdAndUpdate(req.params.id, { status: "started" }, { new: true });
-  res.json(visit);
+  try {
+    const visit = await Visit.findByIdAndUpdate(req.params.id, { status: "started" }, { new: true });
+    if (!visit) return res.status(404).json({ error: "Візит не знайдено" });
+    res.json(visit);
+  } catch (err) {
+    res.status(500).json({ error: "❌ Помилка при оновленні візиту" });
+  }
 });
 
-// Завершити візит
 app.patch("/visits/:id/finish", authMiddleware, async (req, res) => {
-  const visit = await Visit.findByIdAndUpdate(req.params.id, { status: "finished" }, { new: true });
-  res.json(visit);
+  try {
+    const visit = await Visit.findByIdAndUpdate(req.params.id, { status: "finished" }, { new: true });
+    if (!visit) return res.status(404).json({ error: "Візит не знайдено" });
+    res.json(visit);
+  } catch (err) {
+    res.status(500).json({ error: "❌ Помилка при оновленні візиту" });
+  }
 });
 
-// Відмінити візит
 app.patch("/visits/:id/cancel", authMiddleware, async (req, res) => {
-  const visit = await Visit.findByIdAndUpdate(req.params.id, { status: "cancelled" }, { new: true });
-  res.json(visit);
+  try {
+    const visit = await Visit.findByIdAndUpdate(req.params.id, { status: "cancelled" }, { new: true });
+    if (!visit) return res.status(404).json({ error: "Візит не знайдено" });
+    res.json(visit);
+  } catch (err) {
+    res.status(500).json({ error: "❌ Помилка при оновленні візиту" });
+  }
 });
 
-// Перенести візит
-app.patch("/visits/:id/reschedule", authMiddleware, async (req, res) => {
-  const { newDate } = req.body;
-  const visit = await Visit.findByIdAndUpdate(
-    req.params.id,
-    { status: "rescheduled", rescheduledDate: newDate },
-    { new: true }
-  );
-  res.json(visit);
-});
-
-// Додати замовлення під час візиту
-app.post("/visits/:id/orders", authMiddleware, async (req, res) => {
-  const { type, name, quantity } = req.body;
-  const visit = await Visit.findById(req.params.id);
-  visit.orders.push({ type, name, quantity });
-  await visit.save();
-  res.json(visit);
-});
+app.patch("/visits/:id/reschedule", authMiddleware
