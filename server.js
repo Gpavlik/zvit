@@ -16,7 +16,7 @@ const SECRET = process.env.JWT_SECRET || "supersecretkey";
 // Middleware
 // ==========================
 app.use(cors({
-  origin: ["http://127.0.0.1:5500"], // для локальної розробки
+  origin: "*", // для локальної розробки
   methods: ["GET", "POST", "PATCH", "DELETE"],
   allowedHeaders: ["Content-Type", "Authorization"]
 }));
