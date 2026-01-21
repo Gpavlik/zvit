@@ -64,6 +64,39 @@ const LabSchema = new mongoose.Schema({
   }]
 });
 
+const visitSchema = new mongoose.Schema({
+  labId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Lab",
+    required: true
+  },
+  date: { type: Date, required: true },
+  status: {
+    type: String,
+    enum: ["planned", "started", "finished", "cancelled", "rescheduled"],
+    default: "planned"
+  },
+  manager: { type: String, required: true },
+  notes: { type: String },
+
+  // якщо переносимо — нова дата
+  rescheduledDate: { type: Date },
+
+  // замовлення під час візиту
+  orders: [{
+    type: {
+      type: String, // "reagent" або "device"
+      enum: ["reagent", "device"]
+    },
+    name: String,
+    quantity: Number
+  }],
+
+  createdAt: { type: Date, default: Date.now }
+});
+
+module.exports = mongoose.model("Visit", visitSchema);
+
 const User = mongoose.model("User", UserSchema);
 const Lab = mongoose.model("Lab", LabSchema);
 
@@ -177,4 +210,49 @@ app.get("/", (req, res) => res.send("API працює ✅"));
 // 🟢 Запуск сервера
 app.listen(PORT, () => {
   console.log(`✅ Сервер запущено на порті ${PORT}`);
+});
+// Запланувати візит
+app.post("/visits", authMiddleware, async (req, res) => {
+  const { labId, date, manager, notes } = req.body;
+  const visit = new Visit({ labId, date, manager, notes, status: "planned" });
+  await visit.save();
+  res.json(visit);
+});
+
+// Почати візит
+app.patch("/visits/:id/start", authMiddleware, async (req, res) => {
+  const visit = await Visit.findByIdAndUpdate(req.params.id, { status: "started" }, { new: true });
+  res.json(visit);
+});
+
+// Завершити візит
+app.patch("/visits/:id/finish", authMiddleware, async (req, res) => {
+  const visit = await Visit.findByIdAndUpdate(req.params.id, { status: "finished" }, { new: true });
+  res.json(visit);
+});
+
+// Відмінити візит
+app.patch("/visits/:id/cancel", authMiddleware, async (req, res) => {
+  const visit = await Visit.findByIdAndUpdate(req.params.id, { status: "cancelled" }, { new: true });
+  res.json(visit);
+});
+
+// Перенести візит
+app.patch("/visits/:id/reschedule", authMiddleware, async (req, res) => {
+  const { newDate } = req.body;
+  const visit = await Visit.findByIdAndUpdate(
+    req.params.id,
+    { status: "rescheduled", rescheduledDate: newDate },
+    { new: true }
+  );
+  res.json(visit);
+});
+
+// Додати замовлення під час візиту
+app.post("/visits/:id/orders", authMiddleware, async (req, res) => {
+  const { type, name, quantity } = req.body;
+  const visit = await Visit.findById(req.params.id);
+  visit.orders.push({ type, name, quantity });
+  await visit.save();
+  res.json(visit);
 });
