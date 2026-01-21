@@ -10,7 +10,12 @@ const PORT = process.env.PORT || 3000;
 const SECRET = process.env.JWT_SECRET || "supersecretkey";
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: "*", // або вказати конкретно: "http://127.0.0.1:5500"
+  methods: ["GET", "POST", "PATCH", "DELETE"],
+  allowedHeaders: ["Content-Type", "Authorization"]
+}));
+
 app.use(bodyParser.json());
 app.use(express.json());
 
