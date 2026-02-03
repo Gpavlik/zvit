@@ -3,11 +3,13 @@ const fetch = require("node-fetch");
 
 const uri = process.env.MONGO_URI;       // Atlas URI
 const apiKey = process.env.OPENCAGE_KEY; // OpenCage API key
+const collectionName = process.env.COLLECTION_NAME || "labs"; // назва колекції
 
 mongoose.connect(uri);
 
 const EnterpriseSchema = new mongoose.Schema({}, { strict: false });
-const Enterprise = mongoose.model("Enterprise", EnterpriseSchema);
+// Третій параметр — назва колекції
+const Enterprise = mongoose.model("Enterprise", EnterpriseSchema, collectionName);
 
 async function geocode(query) {
   const url = `https://api.opencagedata.com/geocode/v1/json?q=${encodeURIComponent(query)}&key=${apiKey}&language=uk&limit=1`;
@@ -26,6 +28,7 @@ async function geocode(query) {
 
 async function fixCoords() {
   const docs = await Enterprise.find({});
+  console.log(`Знайдено документів: ${docs.length}`);
   let updatedCount = 0;
 
   for (const doc of docs) {
@@ -34,7 +37,6 @@ async function fixCoords() {
     const city = doc.city || "";
     const region = doc.region || "";
 
-    // Формуємо запит
     let query = doc.address && doc.address.trim() !== ""
       ? doc.address
       : `${name} ${edrpou} ${city} ${region}`;
