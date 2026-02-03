@@ -1,10 +1,10 @@
 const mongoose = require("mongoose");
 const fetch = require("node-fetch");
 
-const uri = process.env.MONGO_URI; // твій Atlas URI
-const apiKey = process.env.OPENCAGE_KEY; // ключ OpenCage
+const uri = process.env.MONGO_URI;       // Atlas URI
+const apiKey = process.env.OPENCAGE_KEY; // OpenCage API key
 
-mongoose.connect(uri, { useNewUrlParser: true, useUnifiedTopology: true });
+mongoose.connect(uri);
 
 const EnterpriseSchema = new mongoose.Schema({}, { strict: false });
 const Enterprise = mongoose.model("Enterprise", EnterpriseSchema);
@@ -17,7 +17,7 @@ async function geocode(query) {
     const result = data.results[0];
     return {
       lat: result.geometry.lat,
-      lon: result.geometry.lng,
+      lng: result.geometry.lng,
       address: result.formatted
     };
   }
@@ -29,11 +29,17 @@ async function fixCoords() {
   let updatedCount = 0;
 
   for (const doc of docs) {
-    const name = doc.name || "Невідомо";
+    const name = doc.partner || doc.institution || "Невідомо";
     const edrpou = doc.edrpou || "";
-    let query = doc.address ? doc.address : `${name} ${edrpou}`;
+    const city = doc.city || "";
+    const region = doc.region || "";
 
-    console.log(`🔍 Перевіряю: ${name} (${edrpou})`);
+    // Формуємо запит: якщо адреси немає, шукаємо за назвою+ЄДРПОУ+місто+регіон
+    let query = doc.address && doc.address.trim() !== ""
+      ? doc.address
+      : `${name} ${edrpou} ${city} ${region}`;
+
+    console.log(`🔍 Перевіряю: ${name} (${edrpou}), адреса: ${doc.address || "немає"}`);
 
     const geo = await geocode(query);
     if (!geo) {
@@ -43,14 +49,14 @@ async function fixCoords() {
 
     let needUpdate = false;
 
-    if (!doc.lat || !doc.lon || doc.lat !== geo.lat || doc.lon !== geo.lon) {
+    if (!doc.lat || !doc.lng || doc.lat !== geo.lat || doc.lng !== geo.lng) {
       doc.lat = geo.lat;
-      doc.lon = geo.lon;
+      doc.lng = geo.lng;
       needUpdate = true;
-      console.log(`📍 Оновлено координати: ${geo.lat}, ${geo.lon}`);
+      console.log(`📍 Оновлено координати: ${geo.lat}, ${geo.lng}`);
     }
 
-    if (!doc.address || doc.address !== geo.address) {
+    if (!doc.address || doc.address.trim() === "" || doc.address !== geo.address) {
       doc.address = geo.address;
       needUpdate = true;
       console.log(`🏢 Оновлено адресу: ${geo.address}`);
