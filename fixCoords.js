@@ -1,65 +1,72 @@
-// fixCoords.js
-// Скрипт для переписування координат у MongoDB через OpenCage forward geocoding
-
-const { MongoClient } = require("mongodb");
+const mongoose = require("mongoose");
 const fetch = require("node-fetch");
 
-// Використовуємо змінні середовища Railway
-const OPENCAGE_KEY = process.env.OPENCAGE_KEY;
-const uri = process.env.MONGO_URI;
-const dbName = process.env.DB_NAME;
-const collectionName = process.env.COLLECTION_NAME;
+const uri = process.env.MONGO_URI; // твій Atlas URI
+const apiKey = process.env.OPENCAGE_KEY; // ключ OpenCage
 
-async function geocodeAddress(address) {
-  const url = `https://api.opencagedata.com/geocode/v1/json?q=${encodeURIComponent(address)}&key=${OPENCAGE_KEY}&language=uk`;
+mongoose.connect(uri, { useNewUrlParser: true, useUnifiedTopology: true });
+
+const EnterpriseSchema = new mongoose.Schema({}, { strict: false });
+const Enterprise = mongoose.model("Enterprise", EnterpriseSchema);
+
+async function geocode(query) {
+  const url = `https://api.opencagedata.com/geocode/v1/json?q=${encodeURIComponent(query)}&key=${apiKey}&language=uk&limit=1`;
   const res = await fetch(url);
   const data = await res.json();
-
   if (data.results && data.results.length > 0) {
     const result = data.results[0];
     return {
       lat: result.geometry.lat,
       lon: result.geometry.lng,
-      formatted: result.formatted,
-      city: result.components.city || result.components.town || result.components.village || "невідомо",
-      region: result.components.state || result.components.region || "невідомо"
+      address: result.formatted
     };
-  } else {
-    return null;
   }
+  return null;
 }
 
-async function fixCoordinates() {
-  const client = new MongoClient(uri);
-  try {
-    await client.connect();
-    const db = client.db(dbName);
-    const col = db.collection(collectionName);
+async function fixCoords() {
+  const docs = await Enterprise.find({});
+  let updatedCount = 0;
 
-    const cursor = col.find({});
+  for (const doc of docs) {
+    const name = doc.name || "Невідомо";
+    const edrpou = doc.edrpou || "";
+    let query = doc.address ? doc.address : `${name} ${edrpou}`;
 
-    while (await cursor.hasNext()) {
-      const doc = await cursor.next();
+    console.log(`🔍 Перевіряю: ${name} (${edrpou})`);
 
-      // приклад перевірки: координати поза межами України
-      if (doc.lon < 20 || doc.lon > 40 || doc.lat < 44 || doc.lat > 52) {
-        console.log(`Перевіряю: ${doc.name} (${doc.addr})`);
-
-        const geo = await geocodeAddress(doc.addr);
-        if (geo) {
-          console.log(`→ нові координати: ${geo.lat}, ${geo.lon}`);
-          await col.updateOne(
-            { _id: doc._id },
-            { $set: { lat: geo.lat, lon: geo.lon, addr: geo.formatted, city: geo.city, region: geo.region } }
-          );
-        } else {
-          console.log("→ не вдалося знайти адресу");
-        }
-      }
+    const geo = await geocode(query);
+    if (!geo) {
+      console.log(`❌ Не знайдено координат для: ${query}`);
+      continue;
     }
-  } finally {
-    await client.close();
+
+    let needUpdate = false;
+
+    if (!doc.lat || !doc.lon || doc.lat !== geo.lat || doc.lon !== geo.lon) {
+      doc.lat = geo.lat;
+      doc.lon = geo.lon;
+      needUpdate = true;
+      console.log(`📍 Оновлено координати: ${geo.lat}, ${geo.lon}`);
+    }
+
+    if (!doc.address || doc.address !== geo.address) {
+      doc.address = geo.address;
+      needUpdate = true;
+      console.log(`🏢 Оновлено адресу: ${geo.address}`);
+    }
+
+    if (needUpdate) {
+      await doc.save();
+      updatedCount++;
+    }
   }
+
+  console.log(`✅ Завершено. Оновлено документів: ${updatedCount}`);
+  process.exit(0);
 }
 
-fixCoordinates().catch(err => console.error(err));
+fixCoords().catch(err => {
+  console.error("Помилка:", err);
+  process.exit(1);
+});
