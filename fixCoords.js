@@ -1,8 +1,8 @@
 const mongoose = require("mongoose");
 const fetch = require("node-fetch");
 
-const uri = process.env.MONGO_URI;
-const apiKey = process.env.OPENCAGE_KEY;
+const uri = process.env.MONGO_URI;       // Atlas URI
+const apiKey = process.env.OPENCAGE_KEY; // OpenCage API key
 
 mongoose.connect(uri);
 
@@ -34,6 +34,7 @@ async function fixCoords() {
     const city = doc.city || "";
     const region = doc.region || "";
 
+    // Формуємо запит
     let query = doc.address && doc.address.trim() !== ""
       ? doc.address
       : `${name} ${edrpou} ${city} ${region}`;
