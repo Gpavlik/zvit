@@ -4,13 +4,11 @@
 const { MongoClient } = require("mongodb");
 const fetch = require("node-fetch");
 
-// 🔑 Встав свій ключ OpenCage
-const OPENCAGE_KEY = "fa2e36a0856f4d958bb51dfdd0f62428";
-
-// 🔗 Параметри MongoDB
-const uri = "mongodb://localhost:27017"; // заміни на свій URI
-const dbName = "yourDatabase";           // назва бази
-const collectionName = "lpz";            // назва колекції
+// Використовуємо змінні середовища Railway
+const OPENCAGE_KEY = process.env.OPENCAGE_KEY;
+const uri = process.env.MONGO_URI;
+const dbName = process.env.DB_NAME;
+const collectionName = process.env.COLLECTION_NAME;
 
 async function geocodeAddress(address) {
   const url = `https://api.opencagedata.com/geocode/v1/json?q=${encodeURIComponent(address)}&key=${OPENCAGE_KEY}&language=uk`;
@@ -38,13 +36,12 @@ async function fixCoordinates() {
     const db = client.db(dbName);
     const col = db.collection(collectionName);
 
-    // знайти записи з "поганими" координатами (наприклад, поза Україною)
     const cursor = col.find({});
 
     while (await cursor.hasNext()) {
       const doc = await cursor.next();
 
-      // якщо координати явно некоректні (наприклад, lon > 40 або < 20)
+      // приклад перевірки: координати поза межами України
       if (doc.lon < 20 || doc.lon > 40 || doc.lat < 44 || doc.lat > 52) {
         console.log(`Перевіряю: ${doc.name} (${doc.addr})`);
 
