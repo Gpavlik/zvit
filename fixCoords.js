@@ -1,8 +1,8 @@
 const mongoose = require("mongoose");
 const fetch = require("node-fetch");
 
-const uri = process.env.MONGO_URI;       // Atlas URI
-const apiKey = process.env.OPENCAGE_KEY; // OpenCage API key
+const uri = process.env.MONGO_URI;
+const apiKey = process.env.OPENCAGE_KEY;
 
 mongoose.connect(uri);
 
@@ -34,41 +34,30 @@ async function fixCoords() {
     const city = doc.city || "";
     const region = doc.region || "";
 
-    // Формуємо запит: якщо адреси немає, шукаємо за назвою+ЄДРПОУ+місто+регіон
     let query = doc.address && doc.address.trim() !== ""
       ? doc.address
       : `${name} ${edrpou} ${city} ${region}`;
 
-    console.log(`🔍 Перевіряю: ${name} (${edrpou}), адреса: ${doc.address || "немає"}`);
+    console.log(`🔍 Запит: ${query}`);
 
     const geo = await geocode(query);
     if (!geo) {
-      console.log(`❌ Не знайдено координат для: ${query}`);
+      console.log(`❌ Не знайдено для: ${query}`);
       continue;
     }
 
-    let needUpdate = false;
+    // Переписуємо завжди
+    doc.lat = geo.lat;
+    doc.lng = geo.lng;
+    doc.address = geo.address;
 
-    if (!doc.lat || !doc.lng || doc.lat !== geo.lat || doc.lng !== geo.lng) {
-      doc.lat = geo.lat;
-      doc.lng = geo.lng;
-      needUpdate = true;
-      console.log(`📍 Оновлено координати: ${geo.lat}, ${geo.lng}`);
-    }
+    await doc.save();
+    updatedCount++;
 
-    if (!doc.address || doc.address.trim() === "" || doc.address !== geo.address) {
-      doc.address = geo.address;
-      needUpdate = true;
-      console.log(`🏢 Оновлено адресу: ${geo.address}`);
-    }
-
-    if (needUpdate) {
-      await doc.save();
-      updatedCount++;
-    }
+    console.log(`✅ Оновлено: ${name} (${edrpou}) → ${geo.address} [${geo.lat}, ${geo.lng}]`);
   }
 
-  console.log(`✅ Завершено. Оновлено документів: ${updatedCount}`);
+  console.log(`🏁 Завершено. Оновлено документів: ${updatedCount}`);
   process.exit(0);
 }
 
