@@ -21,8 +21,11 @@ app.use(cors({
   allowedHeaders: ["Content-Type", "Authorization"]
 }));
 
-app.use(bodyParser.json({ limit: "10mb" }));
-app.use(express.json({ limit: "10mb" }));
+// Використовуємо тільки express.json і express.urlencoded
+// Прибираємо bodyParser.json(), щоб не дублювати парсери
+app.use(express.json({ limit: "50mb" })); 
+app.use(express.urlencoded({ limit: "50mb", extended: true }));
+
 
 // ==========================
 // Підключення до MongoDB Atlas
