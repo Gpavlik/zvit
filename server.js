@@ -21,8 +21,8 @@ app.use(cors({
   allowedHeaders: ["Content-Type", "Authorization"]
 }));
 
-app.use(bodyParser.json());
-app.use(express.json());
+app.use(bodyParser.json({ limit: "10mb" }));
+app.use(express.json({ limit: "10mb" }));
 
 // ==========================
 // Підключення до MongoDB Atlas
@@ -76,7 +76,7 @@ const LabSchema = new mongoose.Schema({
       device: String
     }]
   }]
-});
+}, { timestamps: true }); // додаємо createdAt та updatedAt
 
 const VisitSchema = new mongoose.Schema({
   labId: { type: mongoose.Schema.Types.ObjectId, ref: "Lab", required: true },
@@ -93,9 +93,8 @@ const VisitSchema = new mongoose.Schema({
     type: { type: String, enum: ["reagent", "device"] },
     name: String,
     quantity: Number
-  }],
-  createdAt: { type: Date, default: Date.now }
-});
+  }]
+}, { timestamps: true }); // додаємо createdAt та updatedAt
 
 // ==========================
 // Моделі
@@ -161,24 +160,31 @@ app.get("/labs", authMiddleware, async (req, res) => {
   }
 });
 
-app.get("/labs/:edrpou", authMiddleware, async (req, res) => {
+// Отримати зміни після певного часу
+app.get("/labs/changes", authMiddleware, async (req, res) => {
   try {
-    const lab = await Lab.findOne({ edrpou: req.params.edrpou });
-    if (!lab) return res.status(404).json({ error: "Лабораторія не знайдена" });
-    res.json(lab);
+    const since = new Date(parseInt(req.query.since, 10) || 0);
+    const labs = await Lab.find({ updatedAt: { $gt: since } });
+    res.json(labs);
   } catch (err) {
-    res.status(500).json({ error: "❌ Помилка сервера" });
+    res.status(500).json({ error: "❌ Не вдалося отримати зміни лабораторій" });
   }
 });
 
-app.post("/labs/new", authMiddleware, async (req, res) => {
+// Оновити лабораторії (тільки зміни)
+app.post("/labs/update", authMiddleware, async (req, res) => {
   try {
-    const { partner, city, institution, edrpou } = req.body;
-    const newLab = new Lab({ partner, city, institution, edrpou });
-    await newLab.save();
-    res.json({ message: "✅ Лабораторію створено", lab: newLab });
+    const labs = req.body;
+    for (const lab of labs) {
+      await Lab.updateOne(
+        { _id: lab._id },
+        { $set: { ...lab, updatedAt: Date.now() } },
+        { upsert: true }
+      );
+    }
+    res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ error: "❌ Не вдалося створити лабораторію" });
+    res.status(500).json({ error: "❌ Не вдалося оновити лабораторії" });
   }
 });
 
@@ -194,108 +200,31 @@ app.get("/visits", authMiddleware, async (req, res) => {
   }
 });
 
-app.post("/visits", authMiddleware, async (req, res) => {
+// Отримати зміни після певного часу
+app.get("/visits/changes", authMiddleware, async (req, res) => {
   try {
-    const { labId, date, manager, notes } = req.body;
-    const visit = new Visit({ labId, date, manager, notes, status: "planned" });
-    await visit.save();
-    res.json(visit);
+    const since = new Date(parseInt(req.query.since, 10) || 0);
+    const visits = await Visit.find({ updatedAt: { $gt: since } });
+    res.json(visits);
   } catch (err) {
-    res.status(500).json({ error: "❌ Помилка при створенні візиту" });
+    res.status(500).json({ error: "❌ Не вдалося отримати зміни візитів" });
   }
 });
 
-app.patch("/visits/:id/start", authMiddleware, async (req, res) => {
+// Оновити візити (тільки зміни)
+app.post("/visits/update", authMiddleware, async (req, res) => {
   try {
-    const visit = await Visit.findByIdAndUpdate(req.params.id, { status: "started" }, { new: true });
-    if (!visit) return res.status(404).json({ error: "Візит не знайдено" });
-    res.json(visit);
+    const visits = req.body;
+    for (const visit of visits) {
+      await Visit.updateOne(
+        { _id: visit._id },
+        { $set: { ...visit, updatedAt: Date.now() } },
+        { upsert: true }
+      );
+    }
+    res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ error: "❌ Помилка при оновленні візиту" });
-  }
-});
-
-app.patch("/visits/:id/finish", authMiddleware, async (req, res) => {
-  try {
-    const visit = await Visit.findByIdAndUpdate(req.params.id, { status: "finished" }, { new: true });
-    if (!visit) return res.status(404).json({ error: "Візит не знайдено" });
-    res.json(visit);
-  } catch (err) {
-    res.status(500).json({ error: "❌ Помилка при оновленні візиту" });
-  }
-});
-
-app.patch("/visits/:id/cancel", authMiddleware, async (req, res) => {
-  try {
-    const visit = await Visit.findByIdAndUpdate(req.params.id, { status: "cancelled" }, { new: true });
-    if (!visit) return res.status(404).json({ error: "Візит не знайдено" });
-    res.json(visit);
-  } catch (err) {
-    res.status(500).json({ error: "❌ Помилка при оновленні візиту" });
-  }
-});
-
-// Перенести візит
-app.patch("/visits/:id/reschedule", authMiddleware, async (req, res) => {
-  try {
-    const { newDate } = req.body;
-    const visit = await Visit.findByIdAndUpdate(
-      req.params.id,
-      { status: "rescheduled", rescheduledDate: newDate },
-      { new: true }
-    );
-    if (!visit) return res.status(404).json({ error: "Візит не знайдено" });
-    res.json(visit);
-  } catch (err) {
-    res.status(500).json({ error: "❌ Помилка при перенесенні візиту" });
-  }
-});
-
-// Додати замовлення під час візиту
-app.post("/visits/:id/orders", authMiddleware, async (req, res) => {
-  try {
-    const { type, name, quantity } = req.body;
-    const visit = await Visit.findById(req.params.id);
-    if (!visit) return res.status(404).json({ error: "Візит не знайдено" });
-
-    visit.orders.push({ type, name, quantity });
-    await visit.save();
-    res.json(visit);
-  } catch (err) {
-    res.status(500).json({ error: "❌ Помилка при додаванні замовлення" });
-  }
-});
-
-// ==========================
-// Закупівлі — остання закупівля для кожної лабораторії
-// ==========================
-app.post("/purchases", authMiddleware, async (req, res) => {
-  try {
-    const { labIds } = req.body;
-    const labs = await Lab.find({ _id: { $in: labIds } });
-
-    const purchases = labs.map(lab => {
-      let lastPurchase = null;
-      (lab.devices || []).forEach(device => {
-        (device.reagents || []).forEach(r => {
-          if (!lastPurchase || new Date(r.date) > new Date(lastPurchase.date)) {
-            lastPurchase = r;
-          }
-        });
-      });
-
-      return {
-        labName: lab.institution,
-        item: lastPurchase?.name || "—",
-        amount: lastPurchase?.quantity || "—",
-        date: lastPurchase?.date || "—"
-      };
-    });
-
-    res.json(purchases);
-  } catch (err) {
-    console.error("Помилка /purchases:", err);
-    res.status(500).json({ error: "Помилка отримання закупівель" });
+    res.status(500).json({ error: "❌ Не вдалося оновити візити" });
   }
 });
 
@@ -310,4 +239,3 @@ app.get("/", (req, res) => res.send("API працює ✅"));
 app.listen(PORT, () => {
   console.log(`✅ Сервер запущено на порті ${PORT}`);
 });
-
