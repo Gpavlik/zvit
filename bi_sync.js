@@ -82,15 +82,26 @@ async function fetchContactInfo(url) {
     const { data } = await axios.get(url);
     const $ = cheerio.load(data);
 
+    // ПІБ контактної особи
     const name = $('.contact-point__subject').first().text().trim();
+
+    // Телефон
     const phone = $('a[href^="tel:"] .link-blank__text').first().text().trim();
 
-    return { contractor: name || null, pone: phone || null };
+    // Email
+    const email = $('a[href^="mailto:"]')
+      .first()
+      .attr('href')
+      ?.replace('mailto:', '')
+      .trim();
+
+    return { contractor: name || null, pone: phone || null, email: email || null };
   } catch (err) {
     console.error(`Помилка при запиті ${url}:`, err.message);
-    return { contractor: null, pone: null };
+    return { contractor: null, pone: null, email: null };
   }
 }
+
 
 // Витягування даних по лоту
 async function fetchLotInfo(url) {
@@ -118,15 +129,19 @@ async function enrich(data) {
   for (const item of data) {
     let contractor = null;
     let pone = null;
+    let email = null;
     let lotName = null;
     let lotDescription = null;
 
+    // Організатор
     if (item['Організатор_link']) {
       const contactInfo = await fetchContactInfo(item['Організатор_link']);
       contractor = contactInfo.contractor;
       pone = contactInfo.pone;
+      email = contactInfo.email;
     }
 
+    // Лот
     if (item['Лот_link']) {
       const lotInfo = await fetchLotInfo(item['Лот_link']);
       lotName = lotInfo.lotName;
@@ -137,6 +152,7 @@ async function enrich(data) {
       ...item,
       contractor,
       pone,
+      email,
       lotName,
       lotDescription
     });
@@ -145,19 +161,33 @@ async function enrich(data) {
   return enrichedData;
 }
 
+
 // === Sync to MongoDB ===
+const { MongoClient } = require('mongodb');
+
 async function syncToMongo(data, collectionName) {
   const client = new MongoClient(MONGO_URI);
-  await client.connect();
-  const db = client.db("prozorro");
-  const collection = db.collection(collectionName);
 
-  for (const rec of data) {
-    await collection.updateOne({ ID: rec.ID }, { $set: rec }, { upsert: true });
+  try {
+    await client.connect();
+    const db = client.db("prozorro");
+    const collection = db.collection(collectionName);
+
+    // Вставляємо або оновлюємо дані
+    for (const item of data) {
+      await collection.updateOne(
+        { ID: item.ID },              // шукаємо по ID тендера
+        { $set: item },               // оновлюємо всі поля
+        { upsert: true }              // якщо нема — створюємо новий документ
+      );
+    }
+
+    console.log(`Синхронізовано ${data.length} записів у колекцію ${collectionName}`);
+  } catch (err) {
+    console.error("Помилка при синхронізації:", err.message);
+  } finally {
+    await client.close();
   }
-
-  console.log(`Синхронізовано ${data.length} записів у ${collectionName}`);
-  await client.close();
 }
 
 // === Main ===
@@ -166,9 +196,17 @@ async function main() {
     forecast: "https://bi.prozorro.org/single/?appid=7fa5749b-3186-48c2-80bf-4e9e49f1d71a&obj=yXDpjY&theme=sense&opt=ctxmenu,currsel&select=AltSelState::_Language,EN&select=$::_Language,UA&select=$::%D0%9A%D0%BB%D0%B0%D1%81%20CPV,33690000-3%20%D0%9B%D1%96%D0%BA%D0%B0%D1%80%D1%81%D1%8C%D0%BA%D1%96%20%D0%B7%D0%B0%D1%81%D0%BE%D0%B1%D0%B8%20%D1%80%D1%96%D0%B7%D0%BD%D1%96,38430000-8%20%D0%94%D0%B5%D1%82%D0%B5%D0%BA%D1%82%D0%BE%D1%80%D0%B8%20%D1%82%D0%B0%20%D0%B0%D0%BD%D0%B0%D0%BB%D1%96%D0%B7%D0%B0%D1%82%D0%BE%D1%80%D0%B8&select=AltSelState::_DimPlansNo,0" ,
     contracts: "https://bi.prozorro.org/single/?appid=fba3f2f2-cf55-40a0-a79f-b74f5ce947c2&obj=VcLPJX&theme=sense&opt=ctxmenu,currsel&select=%D0%92%D1%96%D0%B4%D0%B1%D0%BE%D1%80%D0%B8%20%D0%B4%D0%BE%20%D0%BF%D0%BE%D1%80%D1%96%D0%B2%D0%BD%D1%8F%D0%BD%D0%BD%D1%8F::_CompExpressionNo,1&select=%D0%92%D1%96%D0%B4%D0%B1%D0%BE%D1%80%D0%B8%20%D0%B4%D0%BE%20%D0%BF%D0%BE%D1%80%D1%96%D0%B2%D0%BD%D1%8F%D0%BD%D0%BD%D1%8F::_CompDimensionNo,1&select=%D0%92%D1%96%D0%B4%D0%B1%D0%BE%D1%80%D0%B8%20%D0%B4%D0%BE%20%D0%BF%D0%BE%D1%80%D1%96%D0%B2%D0%BD%D1%8F%D0%BD%D0%BD%D1%8F::_KPIShowType,abs&select=%D0%92%D1%96%D0%B4%D0%B1%D0%BE%D1%80%D0%B8%20%D0%B4%D0%BE%20%D0%BF%D0%BE%D1%80%D1%96%D0%B2%D0%BD%D1%8F%D0%BD%D0%BD%D1%8F::_KPIShow,0&select=%D0%92%D1%96%D0%B4%D0%B1%D0%BE%D1%80%D0%B8%20%D0%B4%D0%BE%20%D0%BF%D0%BE%D1%80%D1%96%D0%B2%D0%BD%D1%8F%D0%BD%D0%BD%D1%8F::_CTPK,1&select=%D0%92%D1%96%D0%B4%D0%B1%D0%BE%D1%80%D0%B8%20%D0%B4%D0%BE%20%D0%BF%D0%BE%D1%80%D1%96%D0%B2%D0%BD%D1%8F%D0%BD%D0%BD%D1%8F::_DimPrevDaysNo,1&select=%D0%92%D1%96%D0%B4%D0%B1%D0%BE%D1%80%D0%B8%20%D0%B4%D0%BE%20%D0%BF%D0%BE%D1%80%D1%96%D0%B2%D0%BD%D1%8F%D0%BD%D0%BD%D1%8F::_DBKPINo,1&select=%D0%92%D1%96%D0%B4%D0%B1%D0%BE%D1%80%D0%B8%20%D0%B4%D0%BE%20%D0%BF%D0%BE%D1%80%D1%96%D0%B2%D0%BD%D1%8F%D0%BD%D0%BD%D1%8F::_Language,UA&select=AltSelState::_CompExpressionNo,1&select=AltSelState::_CompDimensionNo,1&select=AltSelState::_KPIShowType,%25&select=AltSelState::_KPIShow,1&select=AltSelState::_CTPK,1&select=AltSelState::_DimPrevDaysNo,1&select=AltSelState::_DBKPINo,1&select=AltSelState::_Language,EN&select=$::_CompExpressionNo,1&select=$::_CompDimensionNo,1&select=$::_KPIShowType,abs&select=$::_KPIShow,0&select=$::_CTPK,1&select=$::_DimPrevDaysNo,1&select=$::_DBKPINo,1&select=$::_Language,UA&select=$::%D0%9A%D0%BB%D0%B0%D1%81%20CPV%20%D0%BB%D0%BE%D1%82%D0%B0%20(%D0%B0%D0%B3%D1%80%D0%B5%D0%B3%D0%BE%D0%B2%D0%B0%D0%BD%D0%BE),33690000-3%20%D0%9B%D1%96%D0%BA%D0%B0%D1%80%D1%81%D1%8C%D0%BA%D1%96%20%D0%B7%D0%B0%D1%81%D0%BE%D0%B1%D0%B8%20%D1%80%D1%96%D0%B7%D0%BD%D1%96,38430000-8%20%D0%94%D0%B5%D1%82%D0%B5%D0%BA%D1%82%D0%BE%D1%80%D0%B8%20%D1%82%D0%B0%20%D0%B0%D0%BD%D0%B0%D0%BB%D1%96%D0%B7%D0%B0%D1%82%D0%BE%D1%80%D0%B8&select=AltSelState::_DimTenderersNo,0&select=AltSelState::_DimTendersNo,0"  };
 
-  for (const [name, url] of Object.entries(urls)) {
-    const filename = `${name}.xlsx`;
-    await downloadProzorroBI(url, filename);
+ for (const [name, url] of Object.entries(urls)) {
+  const filename = `${name}.xlsx`;
+  await downloadProzorroBI(url, filename);
+
+  const newData = parseExcelWithLinks(filename);
+  const cleanData = await deduplicate(newData, collection);
+  const enrichedData = await enrich(cleanData);
+
+  await syncToMongo(enrichedData, `labs_${name}`);
+}
+
 
     // TODO: розпарсити Excel у JSON (через xlsx або exceljs)
     for (const [name, url] of Object.entries(urls)) {
