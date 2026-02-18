@@ -42,7 +42,30 @@ async function downloadProzorroBI(url, filename) {
   return jsonData;
 }
 
+function parseExcelWithLinks(filename) {
+  const workbook = XLSX.readFile(filename);
+  const sheetName = workbook.SheetNames[0];
+  const sheet = workbook.Sheets[sheetName];
 
+  const jsonData = XLSX.utils.sheet_to_json(sheet, { raw: false });
+
+  // Додаємо гіперпосилання з клітинок
+  jsonData.forEach((row, rowIndex) => {
+    for (const col in sheet) {
+      if (col[0] === '!') continue; // службові поля
+      const cell = sheet[col];
+      if (cell && cell.l && cell.l.Target) {
+        // cell.l.Target містить URL гіперпосилання
+        const header = col.replace(/[0-9]/g, ''); // визначаємо колонку
+        if (!row[`${header}_link`]) {
+          row[`${header}_link`] = cell.l.Target;
+        }
+      }
+    }
+  });
+
+  return jsonData;
+}
 
 // === Deduplicator ===
 async function deduplicate(newData, collection) {
@@ -85,10 +108,25 @@ async function main() {
     await downloadProzorroBI(url, filename);
 
     // TODO: розпарсити Excel у JSON (через xlsx або exceljs)
-    const newData = [
-      { ID: "123", ЄДРПОУ: "00123456" },
-      { ID: "124", ЄДРПОУ: "00987654" }
-    ];
+    for (const [name, url] of Object.entries(urls)) {
+  const filename = `${name}.xlsx`;
+  await downloadProzorroBI(url, filename);
+
+  // тепер парсимо Excel у JSON з гіперпосиланнями
+  const newData = parseExcelWithLinks(filename);
+
+  const client = new MongoClient(MONGO_URI);
+  await client.connect();
+  const db = client.db("prozorro");
+  const collection = db.collection(`labs_${name}`);
+
+  const cleanData = await deduplicate(newData, collection);
+  const enrichedData = enrich(cleanData);
+  await syncToMongo(enrichedData, `labs_${name}`);
+
+  await client.close();
+}
+
 
     const client = new MongoClient(MONGO_URI);
     await client.connect();
