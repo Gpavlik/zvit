@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "fixcoords": "node fixCoords.js",
-    "sync": "node bi_sync.js"
+    "sync": "node bi_sync.js",
+    "postinstall": "npx playwright install --with-deps"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",
@@ -23,6 +24,6 @@
     "node-cron": "^3.0.2"
   },
   "engines": {
-    "node": ">=18"
+    "node": "18.x"
   }
 }
