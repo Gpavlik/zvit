@@ -5,8 +5,9 @@ const express = require("express");
 const cors = require("cors");
 const mongoose = require("mongoose");
 const bcrypt = require("bcrypt");
-const bodyParser = require("body-parser");
 const jwt = require("jsonwebtoken");
+const cron = require("node-cron");
+const { main } = require("./bi_sync");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -16,16 +17,12 @@ const SECRET = process.env.JWT_SECRET || "supersecretkey";
 // Middleware
 // ==========================
 app.use(cors({
-  origin: "*", // для локальної розробки
+  origin: "*",
   methods: ["GET", "POST", "PATCH", "DELETE"],
   allowedHeaders: ["Content-Type", "Authorization"]
 }));
-
-// Використовуємо тільки express.json і express.urlencoded
-// Прибираємо bodyParser.json(), щоб не дублювати парсери
-app.use(express.json({ limit: "50mb" })); 
+app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
-
 
 // ==========================
 // Підключення до MongoDB Atlas
@@ -54,10 +51,19 @@ const LabSchema = new mongoose.Schema({
   address: String,
   contractor: String,
   phone: String,
-  edrpou: String,
+  email: String,              // нове поле для email контрактора
+  edrpou: { type: String, index: true }, // ключ для пошуку
   manager: String,
   lat: Number,
   lng: Number,
+
+  // Масив лотів
+  lots: [{
+    lotName: String,
+    auctionDate: Date,
+    soldDate: Date
+  }],
+
   devices: [{
     device: String,
     soldDate: Date,
@@ -70,6 +76,7 @@ const LabSchema = new mongoose.Schema({
       date: Date
     }]
   }],
+
   tasks: [{
     title: String,
     date: Date,
@@ -79,7 +86,7 @@ const LabSchema = new mongoose.Schema({
       device: String
     }]
   }]
-}, { timestamps: true }); // додаємо createdAt та updatedAt
+}, { timestamps: true });
 
 const VisitSchema = new mongoose.Schema({
   labId: { type: mongoose.Schema.Types.ObjectId, ref: "Lab", required: true },
@@ -97,7 +104,7 @@ const VisitSchema = new mongoose.Schema({
     name: String,
     quantity: Number
   }]
-}, { timestamps: true }); // додаємо createdAt та updatedAt
+}, { timestamps: true });
 
 // ==========================
 // Моделі
@@ -163,7 +170,6 @@ app.get("/labs", authMiddleware, async (req, res) => {
   }
 });
 
-// Отримати зміни після певного часу
 app.get("/labs/changes", authMiddleware, async (req, res) => {
   try {
     const since = new Date(parseInt(req.query.since, 10) || 0);
@@ -174,7 +180,6 @@ app.get("/labs/changes", authMiddleware, async (req, res) => {
   }
 });
 
-// Оновити лабораторії (тільки зміни)
 app.post("/labs/update", authMiddleware, async (req, res) => {
   try {
     const labs = req.body;
@@ -203,7 +208,6 @@ app.get("/visits", authMiddleware, async (req, res) => {
   }
 });
 
-// Отримати зміни після певного часу
 app.get("/visits/changes", authMiddleware, async (req, res) => {
   try {
     const since = new Date(parseInt(req.query.since, 10) || 0);
@@ -214,7 +218,6 @@ app.get("/visits/changes", authMiddleware, async (req, res) => {
   }
 });
 
-// Оновити візити (тільки зміни)
 app.post("/visits/update", authMiddleware, async (req, res) => {
   try {
     const visits = req.body;
@@ -232,43 +235,23 @@ app.post("/visits/update", authMiddleware, async (req, res) => {
 });
 
 // ==========================
-// Health check для Railway
+// Health check
 // ==========================
 app.get("/", (req, res) => res.send("API працює ✅"));
 
 // ==========================
-// Запуск сервера
+// Оновлення БД вручну
 // ==========================
-app.listen(PORT, () => {
-  console.log(`✅ Сервер запущено на порті ${PORT}`);
-});
-//============================
-//Оновлюємо ДБ
-//============================
-
-const express = require('express');
-const cron = require('node-cron');
-const { main } = require('./bi_sync');
-
-const app = express();
-
-// Ендпоінт для ручного запуску
-app.get('/sync', async (req, res) => {
+app.get("/sync", async (req, res) => {
   try {
     await main();
-    res.send('Цикл оновлення виконано успішно!');
+    res.send("Цикл оновлення виконано успішно!");
   } catch (err) {
-    console.error('Помилка циклу:', err);
-    res.status(500).send('Помилка при виконанні циклу');
+    console.error("Помилка циклу:", err);
+    res.status(500).send("Помилка при виконанні циклу");
   }
 });
 
 // Автоматичний запуск щоп’ятниці о 23:00
-cron.schedule('0 23 * * 5', () => {
-  console.log('Запускаю цикл оновлення (п’ятниця 23:00)...');
-  main().catch(err => console.error('Помилка циклу:', err));
-});
-
-app.listen(process.env.PORT || 3000) => {
-  console.log('✅ Сервер запущено на порті 3000');
-});
+cron.schedule("0 23 * * 5", () => {
+  console.log("Запускаю цикл оновлення (п’ятниця 23:00)
