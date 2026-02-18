@@ -95,6 +95,23 @@ async function fetchContactInfo(url) {
     return { contractor: null, pone: null };
   }
 }
+async function fetchLotInfo(url) {
+  try {
+    const { data } = await axios.get(url);
+    const $ = cheerio.load(data);
+
+    // Назва лота
+    const lotName = $('h2.title.title--large').first().text().trim();
+
+    // Опис лота (може бути в іншому блоці, треба перевірити HTML)
+    const lotDescription = $('div.lot-description').first().text().trim();
+
+    return { lotName: lotName || null, lotDescription: lotDescription || null };
+  } catch (err) {
+    console.error(`Помилка при запиті ${url}:`, err.message);
+    return { lotName: null, lotDescription: null };
+  }
+}
 
 // Основна enrich
 async function enrich(data) {
@@ -103,22 +120,35 @@ async function enrich(data) {
   for (const item of data) {
     let contractor = null;
     let pone = null;
+    let lotName = null;
+    let lotDescription = null;
 
+    // Організатор
     if (item['Організатор_link']) {
       const contactInfo = await fetchContactInfo(item['Організатор_link']);
       contractor = contactInfo.contractor;
       pone = contactInfo.pone;
     }
 
+    // Лот
+    if (item['Лот_link']) {
+      const lotInfo = await fetchLotInfo(item['Лот_link']);
+      lotName = lotInfo.lotName;
+      lotDescription = lotInfo.lotDescription;
+    }
+
     enrichedData.push({
       ...item,
       contractor,
-      pone
+      pone,
+      lotName,
+      lotDescription
     });
   }
 
   return enrichedData;
 }
+
 
 // === Sync to MongoDB ===
 async function syncToMongo(data, collectionName) {
