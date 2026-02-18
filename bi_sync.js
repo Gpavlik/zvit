@@ -74,19 +74,15 @@ async function deduplicate(newData, collection) {
 }
 
 // === Enricher ===
-
 const cheerio = require('cheerio');
 
-// Витягування контактної особи та телефону зі сторінки Prozorro
+// Витягування контактної особи та телефону
 async function fetchContactInfo(url) {
   try {
     const { data } = await axios.get(url);
     const $ = cheerio.load(data);
 
-    // ПІБ контактної особи
     const name = $('.contact-point__subject').first().text().trim();
-
-    // Телефон (беремо текст із <span> всередині <a href="tel:...">)
     const phone = $('a[href^="tel:"] .link-blank__text').first().text().trim();
 
     return { contractor: name || null, pone: phone || null };
@@ -95,16 +91,18 @@ async function fetchContactInfo(url) {
     return { contractor: null, pone: null };
   }
 }
+
+// Витягування даних по лоту
 async function fetchLotInfo(url) {
   try {
     const { data } = await axios.get(url);
     const $ = cheerio.load(data);
 
-    // Назва лота
     const lotName = $('h2.title.title--large').first().text().trim();
-
-    // Опис лота (може бути в іншому блоці, треба перевірити HTML)
-    const lotDescription = $('div.lot-description').first().text().trim();
+    let lotDescription = $('div.lot-description').first().text().trim();
+    if (!lotDescription) {
+      lotDescription = $('div.text-block').first().text().trim();
+    }
 
     return { lotName: lotName || null, lotDescription: lotDescription || null };
   } catch (err) {
@@ -123,14 +121,12 @@ async function enrich(data) {
     let lotName = null;
     let lotDescription = null;
 
-    // Організатор
     if (item['Організатор_link']) {
       const contactInfo = await fetchContactInfo(item['Організатор_link']);
       contractor = contactInfo.contractor;
       pone = contactInfo.pone;
     }
 
-    // Лот
     if (item['Лот_link']) {
       const lotInfo = await fetchLotInfo(item['Лот_link']);
       lotName = lotInfo.lotName;
@@ -148,7 +144,6 @@ async function enrich(data) {
 
   return enrichedData;
 }
-
 
 // === Sync to MongoDB ===
 async function syncToMongo(data, collectionName) {
