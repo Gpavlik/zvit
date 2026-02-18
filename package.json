@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "fixcoords": "node fixCoords.js"
+    "sync": "node bi_sync.js"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",
