@@ -6,14 +6,35 @@ const { MongoClient } = require("mongodb");
 // Mongo URI беремо з Railway secrets
 const MONGO_URI = process.env.MONGO_URI;
 
-// === Downloader (заглушка) ===
+// === Downloader ===
 // Тут ми будемо качати Excel з Prozorro BI через headless браузер (Playwright/Selenium).
+const { chromium } = require('playwright');
+
 async function downloadProzorroBI(url, filename) {
-  console.log(`Завантажуємо дані з ${url}...`);
-  // TODO: інтеграція з Playwright для експорту Excel
-  fs.writeFileSync(filename, "fake_excel_content");
+  const browser = await chromium.launch({ headless: true });
+  const page = await browser.newPage();
+
+  // відкриваємо BI‑фрейм
+  await page.goto(url, { waitUntil: 'networkidle' });
+
+  // чекаємо поки з’явиться кнопка "Export"
+  await page.waitForSelector('button:has-text("Export")');
+
+  // клікаємо "Export"
+  await page.click('button:has-text("Export")');
+
+  // клікаємо "Excel"
+  await page.click('button:has-text("Excel")');
+
+  // чекаємо завантаження файлу
+  const download = await page.waitForEvent('download');
+  await download.saveAs(filename);
+
+  await browser.close();
+  console.log(`Файл збережено як ${filename}`);
   return filename;
 }
+
 
 // === Deduplicator ===
 async function deduplicate(newData, collection) {
