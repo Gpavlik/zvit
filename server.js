@@ -242,3 +242,33 @@ app.get("/", (req, res) => res.send("API працює ✅"));
 app.listen(PORT, () => {
   console.log(`✅ Сервер запущено на порті ${PORT}`);
 });
+//============================
+//Оновлюємо ДБ
+//============================
+
+const express = require('express');
+const cron = require('node-cron');
+const { main } = require('./bi_sync');
+
+const app = express();
+
+// Ендпоінт для ручного запуску
+app.get('/sync', async (req, res) => {
+  try {
+    await main();
+    res.send('Цикл оновлення виконано успішно!');
+  } catch (err) {
+    console.error('Помилка циклу:', err);
+    res.status(500).send('Помилка при виконанні циклу');
+  }
+});
+
+// Автоматичний запуск щоп’ятниці о 23:00
+cron.schedule('0 23 * * 5', () => {
+  console.log('Запускаю цикл оновлення (п’ятниця 23:00)...');
+  main().catch(err => console.error('Помилка циклу:', err));
+});
+
+app.listen(3000, () => {
+  console.log('✅ Сервер запущено на порті 3000');
+});
