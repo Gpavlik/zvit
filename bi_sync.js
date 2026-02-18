@@ -74,17 +74,20 @@ async function deduplicate(newData, collection) {
 }
 
 // === Enricher ===
+
 const cheerio = require('cheerio');
 
-// Функція для витягування контактної особи та телефону зі сторінки Prozorro
+// Витягування контактної особи та телефону зі сторінки Prozorro
 async function fetchContactInfo(url) {
   try {
     const { data } = await axios.get(url);
     const $ = cheerio.load(data);
 
-    // ⚠️ Тут треба підлаштувати селектори під реальну HTML-структуру Prozorro
-    const name = $('div.contact-person').text().trim();
-    const phone = $('div.contact-phone').text().trim();
+    // ПІБ контактної особи
+    const name = $('.contact-point__subject').first().text().trim();
+
+    // Телефон (беремо текст із <span> всередині <a href="tel:...">)
+    const phone = $('a[href^="tel:"] .link-blank__text').first().text().trim();
 
     return { contractor: name || null, pone: phone || null };
   } catch (err) {
@@ -93,7 +96,7 @@ async function fetchContactInfo(url) {
   }
 }
 
-// Основна функція enrich
+// Основна enrich
 async function enrich(data) {
   const enrichedData = [];
 
@@ -116,7 +119,6 @@ async function enrich(data) {
 
   return enrichedData;
 }
-
 
 // === Sync to MongoDB ===
 async function syncToMongo(data, collectionName) {
