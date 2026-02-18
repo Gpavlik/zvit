@@ -1,5 +1,4 @@
 const axios = require("axios");
-const fs = require("fs");
 const { MongoClient } = require("mongodb");
 const { chromium } = require("playwright");
 const XLSX = require("xlsx");
@@ -48,12 +47,6 @@ function parseExcelWithLinks(filename) {
   return jsonData;
 }
 
-// === Deduplicator ===
-async function deduplicate(newData, collection) {
-  const existingIds = await collection.distinct("ID");
-  return newData.filter(item => !existingIds.includes(item.ID));
-}
-
 // === Enricher ===
 async function fetchContactInfo(url) {
   try {
@@ -73,17 +66,20 @@ async function fetchLotInfo(url) {
     const { data } = await axios.get(url);
     const $ = cheerio.load(data);
     const lotName = $('h2.title.title--large').first().text().trim();
-    let lotDescription = $('div.lot-description').first().text().trim() || $('div.text-block').first().text().trim();
-    return { lotName: lotName || null, lotDescription: lotDescription || null };
+    let auctionDate = $('div:contains("Дата аукціону")').first().text().trim();
+    let soldDate = $('div:contains("Дата підписання договору")').first().text().trim();
+    return { lotName: lotName || null, auctionDate: auctionDate || null, soldDate: soldDate || null };
   } catch {
-    return { lotName: null, lotDescription: null };
+    return { lotName: null, auctionDate: null, soldDate: null };
   }
 }
 
 async function enrich(data) {
   const enrichedData = [];
   for (const item of data) {
-    let contractor = null, phone = null, email = null, lotName = null, lotDescription = null;
+    let contractor = null, phone = null, email = null;
+    let lotName = null, auctionDate = null, soldDate = null;
+
     if (item['Організатор_link']) {
       const contactInfo = await fetchContactInfo(item['Організатор_link']);
       contractor = contactInfo.contractor;
@@ -93,9 +89,10 @@ async function enrich(data) {
     if (item['Лот_link']) {
       const lotInfo = await fetchLotInfo(item['Лот_link']);
       lotName = lotInfo.lotName;
-      lotDescription = lotInfo.lotDescription;
+      auctionDate = lotInfo.auctionDate;
+      soldDate = lotInfo.soldDate;
     }
-    enrichedData.push({ ...item, contractor, phone, email, lotName, lotDescription });
+    enrichedData.push({ ...item, contractor, phone, email, lotName, auctionDate, soldDate });
   }
   return enrichedData;
 }
@@ -107,13 +104,35 @@ async function syncToMongo(data, collectionName) {
     await client.connect();
     const db = client.db("prozorro");
     const collection = db.collection(collectionName);
+
     for (const item of data) {
+      const edrpou = item.ЄДРПОУ || item.edrpou;
+      if (!edrpou) continue;
+
+      const lotEntry = {
+        lotName: item.lotName,
+        auctionDate: item.auctionDate ? new Date(item.auctionDate) : null,
+        soldDate: item.soldDate ? new Date(item.soldDate) : null
+      };
+
       await collection.updateOne(
-        { ID: item.ID },
-        { $set: item },
+        { edrpou },
+        {
+          $set: {
+            contractor: item.contractor,
+            phone: item.phone,
+            email: item.email,
+            region: item.region,
+            city: item.city,
+            institution: item.institution,
+            address: item.address
+          },
+          $addToSet: { lots: lotEntry }
+        },
         { upsert: true }
       );
     }
+
     console.log(`Синхронізовано ${data.length} записів у колекцію ${collectionName}`);
   } finally {
     await client.close();
@@ -138,8 +157,7 @@ async function main() {
     const db = client.db("prozorro");
     const collection = db.collection(`labs_${name}`);
 
-    const cleanData = await deduplicate(newData, collection);
-    const enrichedData = await enrich(cleanData);
+    const enrichedData = await enrich(newData);
     await syncToMongo(enrichedData, `labs_${name}`);
 
     await client.close();
