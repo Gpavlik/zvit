@@ -242,3 +242,4 @@ for (const [name, url] of Object.entries(urls)) {
 }
 
 main().catch(err => console.error(err));
+module.exports = { main };
