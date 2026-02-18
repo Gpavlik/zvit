@@ -9,6 +9,7 @@ const MONGO_URI = process.env.MONGO_URI;
 // === Downloader ===
 // Тут ми будемо качати Excel з Prozorro BI через headless браузер (Playwright/Selenium).
 const { chromium } = require('playwright');
+const XLSX = require('xlsx');
 
 async function downloadProzorroBI(url, filename) {
   const browser = await chromium.launch({ headless: true });
@@ -17,14 +18,12 @@ async function downloadProzorroBI(url, filename) {
   // відкриваємо BI‑фрейм
   await page.goto(url, { waitUntil: 'networkidle' });
 
-  // чекаємо поки з’явиться кнопка "Export"
+  // чекаємо кнопку "Export"
   await page.waitForSelector('button:has-text("Export")');
-
-  // клікаємо "Export"
   await page.click('button:has-text("Export")');
 
-  // клікаємо "Excel"
-  await page.click('button:has-text("Excel")');
+  // клікаємо саме "Formatted Excel"
+  await page.click('button:has-text("Formatted Excel")');
 
   // чекаємо завантаження файлу
   const download = await page.waitForEvent('download');
@@ -32,8 +31,17 @@ async function downloadProzorroBI(url, filename) {
 
   await browser.close();
   console.log(`Файл збережено як ${filename}`);
-  return filename;
+
+  // === Парсинг Excel у JSON ===
+  const workbook = XLSX.readFile(filename);
+  const sheetName = workbook.SheetNames[0];
+  const sheet = workbook.Sheets[sheetName];
+  const jsonData = XLSX.utils.sheet_to_json(sheet, { raw: false });
+
+  // Тепер jsonData містить масив об’єктів, включно з гіперпосиланнями
+  return jsonData;
 }
+
 
 
 // === Deduplicator ===
