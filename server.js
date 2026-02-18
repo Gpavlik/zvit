@@ -269,6 +269,6 @@ cron.schedule('0 23 * * 5', () => {
   main().catch(err => console.error('Помилка циклу:', err));
 });
 
-app.listen(3000, () => {
+app.listen(process.env.PORT || 3000) => {
   console.log('✅ Сервер запущено на порті 3000');
 });
