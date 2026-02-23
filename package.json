@@ -24,6 +24,6 @@
     "node-cron": "^3.0.2"
   },
   "engines": {
-    "node": "18.x"
+    "node": "20.x"
   }
 }
