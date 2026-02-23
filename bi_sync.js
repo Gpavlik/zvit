@@ -7,9 +7,9 @@ const fs = require("fs");
 // Mongo URI беремо з Railway secrets
 const MONGO_URI = process.env.MONGO_URI;
 
-// === Downloader без Playwright ===
-async function downloadProzorroBI(url, filename) {
-  const res = await axios.get(url, { responseType: "arraybuffer" });
+// === Downloader з Google Drive ===
+async function downloadGoogleSheet(sheetUrl, filename) {
+  const res = await axios.get(sheetUrl, { responseType: "arraybuffer" });
   fs.writeFileSync(filename, res.data);
   console.log(`Файл збережено як ${filename}`);
   return XLSX.readFile(filename);
@@ -120,6 +120,8 @@ async function syncToMongo(data, collectionName) {
         },
         { upsert: true }
       );
+
+      console.log(`Оновлено: ${edrpou} (${item.contractor || "невідомий"})`);
     }
 
     console.log(`Синхронізовано ${data.length} записів у колекцію ${collectionName}`);
@@ -131,13 +133,13 @@ async function syncToMongo(data, collectionName) {
 // === Main ===
 async function main() {
   const urls = {
-    forecast: "https://bi.prozorro.org/single/?appid=7fa5749b-3186-48c2-80bf-4e9e49f1d71a&obj=yXDpjY&theme=sense&opt=ctxmenu,currsel&select=AltSelState::_Language,EN&select=$::_Language,UA&select=$::Клас%20CPV,33690000-3%20Лікарські%20засоби%20різні,38430000-8%20Детектори%20та%20аналізатори&select=AltSelState::_DimPlansNo,0",
-    contracts: "https://bi.prozorro.org/single/?appid=b22f24e4-0f6a-4702-bdb8-3973d466afa8&obj=TrEJtY&theme=sense&opt=ctxmenu,currsel&select=AltSelState::_Language,EN&select=$::_Language,UA&select=$::Клас%20CPV,33690000-3%20Лікарські%20засоби%20різні,38430000-8%20Детектори%20та%20аналізатори&select=AltSelState::_DimPlansNo,0"
+    forecast: "https://docs.google.com/spreadsheets/d/1EwnFUdMe4CLE73VT3s9xO187a8ezyXQm/export?format=xlsx",
+    contracts: "https://docs.google.com/spreadsheets/d/1bYGwPBrXm_merxSbewHZgl7bCSAB8fxh/export?format=xlsx"
   };
 
   for (const [name, url] of Object.entries(urls)) {
     const filename = `${name}.xlsx`;
-    await downloadProzorroBI(url, filename);
+    await downloadGoogleSheet(url, filename);
 
     const newData = parseExcelWithLinks(filename);
     const enrichedData = await enrich(newData);
