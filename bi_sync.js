@@ -1,4 +1,4 @@
-const axios = require("axios");
+const { google } = require("googleapis");
 const { MongoClient } = require("mongodb");
 const XLSX = require("xlsx");
 const cheerio = require("cheerio");
@@ -7,10 +7,23 @@ const fs = require("fs");
 // Mongo URI беремо з Railway secrets
 const MONGO_URI = process.env.MONGO_URI;
 
+// JSON ключ Service Account збережи у Railway secrets як GOOGLE_SERVICE_ACCOUNT_KEY
+const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY);
+
+const auth = new google.auth.GoogleAuth({
+  credentials,
+  scopes: ["https://www.googleapis.com/auth/drive.readonly"],
+});
+
+const drive = google.drive({ version: "v3", auth });
+
 // === Downloader з Google Drive ===
-async function downloadGoogleSheet(sheetUrl, filename) {
-  const res = await axios.get(sheetUrl, { responseType: "arraybuffer" });
-  fs.writeFileSync(filename, res.data);
+async function downloadFromDrive(fileId, filename) {
+  const res = await drive.files.get(
+    { fileId, alt: "media" },
+    { responseType: "arraybuffer" }
+  );
+  fs.writeFileSync(filename, Buffer.from(res.data));
   console.log(`Файл збережено як ${filename}`);
   return XLSX.readFile(filename);
 }
@@ -132,14 +145,14 @@ async function syncToMongo(data, collectionName) {
 
 // === Main ===
 async function main() {
-  const urls = {
-    forecast: "https://docs.google.com/spreadsheets/d/1EwnFUdMe4CLE73VT3s9xO187a8ezyXQm/export?format=xlsx",
-    contracts: "https://docs.google.com/spreadsheets/d/1bYGwPBrXm_merxSbewHZgl7bCSAB8fxh/export?format=xlsx"
+  const fileIds = {
+    forecast: "1EwnFUdMe4CLE73VT3s9xO187a8ezyXQm",
+    contracts: "1bYGwPBrXm_merxSbewHZgl7bCSAB8fxh"
   };
 
-  for (const [name, url] of Object.entries(urls)) {
+  for (const [name, fileId] of Object.entries(fileIds)) {
     const filename = `${name}.xlsx`;
-    await downloadGoogleSheet(url, filename);
+    await downloadFromDrive(fileId, filename);
 
     const newData = parseExcelWithLinks(filename);
     const enrichedData = await enrich(newData);
