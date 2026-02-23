@@ -3,7 +3,7 @@ const { MongoClient } = require("mongodb");
 const XLSX = require("xlsx");
 const cheerio = require("cheerio");
 const fs = require("fs");
-const { google } = require("googleapis");
+
 
 // Mongo URI беремо з Railway secrets
 const MONGO_URI = process.env.MONGO_URI;
