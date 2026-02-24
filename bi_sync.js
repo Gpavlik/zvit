@@ -4,7 +4,9 @@ const XLSX = require("xlsx");
 const cheerio = require("cheerio");
 const fs = require("fs");
 const axios = require("axios");
-const Lab = require("./models/Lab");
+const mongoose = require("mongoose");
+const Lab = mongoose.model("Lab");
+
 
 const MONGO_URI = process.env.MONGO_URI;
 const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY);
