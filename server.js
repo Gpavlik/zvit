@@ -52,7 +52,7 @@ const LabSchema = new mongoose.Schema({
   contractor: String,
   phone: String,
   email: String,
-  edrpou: { type: String, index: true, required: true }, // ключ для пошуку
+  edrpou: { type: String, index: true }, // ключ для пошуку
   manager: String,
   lat: Number,
   lng: Number,
@@ -89,7 +89,7 @@ const LabSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 const VisitSchema = new mongoose.Schema({
-  edrpou: { type: String, index: true, required: true }, // ключ для пошуку
+  edrpou: { type: String, index: true }, // ключ для пошуку
   date: { type: Date, required: true },
   status: {
     type: String,
@@ -174,9 +174,17 @@ app.post("/labs/update", authMiddleware, async (req, res) => {
   try {
     const labs = req.body;
     for (const lab of labs) {
-      if (!lab.edrpou) continue;
+      let filter = {};
+      if (lab.edrpou && lab.edrpou !== "ФОП") {
+        filter = { edrpou: lab.edrpou };
+      } else if (lab._id) {
+        filter = { _id: lab._id };
+      } else {
+        continue;
+      }
+
       await Lab.updateOne(
-        { edrpou: lab.edrpou },
+        filter,
         { $set: { ...lab, updatedAt: new Date() } },
         { upsert: true }
       );
@@ -204,7 +212,24 @@ app.post("/labs/migrate", authMiddleware, async (req, res) => {
     if (!Array.isArray(labs)) {
       return res.status(400).json({ error: "❌ Очікується масив лабораторій" });
     }
-    await Lab.insertMany(labs, { ordered: false });
+
+    for (const lab of labs) {
+      let filter = {};
+      if (lab.edrpou && lab.edrpou !== "ФОП") {
+        filter = { edrpou: lab.edrpou };
+      } else if (lab._id) {
+        filter = { _id: lab._id };
+      } else {
+        continue;
+      }
+
+      await Lab.updateOne(
+        filter,
+        { $set: { ...lab, updatedAt: new Date() } },
+        { upsert: true }
+      );
+    }
+
     res.json({ success: true, count: labs.length });
   } catch (err) {
     res.status(500).json({ error: "❌ Помилка при міграції", details: err.message });
@@ -227,9 +252,17 @@ app.post("/visits/update", authMiddleware, async (req, res) => {
   try {
     const visits = req.body;
     for (const visit of visits) {
-      if (!visit.edrpou) continue;
+      let filter = {};
+      if (visit.edrpou && visit.edrpou !== "ФОП") {
+        filter = { edrpou: visit.edrpou, date: visit.date };
+      } else if (visit._id) {
+        filter = { _id: visit._id };
+      } else {
+        continue;
+      }
+
       await Visit.updateOne(
-        { edrpou: visit.edrpou, date: visit.date },
+        filter,
         { $set: { ...visit, updatedAt: new Date() } },
         { upsert: true }
       );
