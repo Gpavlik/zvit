@@ -1,6 +1,7 @@
 // ==========================
 // Імпорти
 // ==========================
+require("dotenv").config(); // завжди на самому початку
 const express = require("express");
 const cors = require("cors");
 const mongoose = require("mongoose");
@@ -12,8 +13,6 @@ const Lab = require("./models/Lab");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const SECRET = process.env.JWT_SECRET || "supersecretkey";
-require("dotenv").config();
 const SECRET = process.env.JWT_SECRET || "supersecretkey";
 
 // ==========================
@@ -46,9 +45,8 @@ const UserSchema = new mongoose.Schema({
   districts: [String]
 });
 
-
 const VisitSchema = new mongoose.Schema({
-  _id: { type: String, required: true }, // UUID або ObjectId як рядок
+  _id: { type: String, required: true },
   edrpou: { type: String, index: true },
   date: { type: Date, required: true },
   status: {
@@ -70,7 +68,6 @@ const VisitSchema = new mongoose.Schema({
 // Моделі
 // ==========================
 const User = mongoose.model("User", UserSchema);
-
 const Visit = mongoose.model("Visit", VisitSchema);
 
 // ==========================
@@ -130,134 +127,24 @@ app.get("/labs", authMiddleware, async (req, res) => {
   }
 });
 
-app.post("/labs/update", authMiddleware, async (req, res) => {
-  try {
-    const labs = req.body;
-    for (const lab of labs) {
-      let filter = {};
-      if (lab.edrpou && lab.edrpou !== "ФОП") {
-        filter = { edrpou: lab.edrpou };
-      } else if (lab._id) {
-        filter = { _id: lab._id };
-      } else {
-        continue;
-      }
-
-      const { _id, ...labData } = lab; // не оновлюємо _id
-
-      await Lab.updateOne(
-        filter,
-        { $set: { ...labData, updatedAt: new Date() } },
-        { upsert: true }
-      );
-    }
-    res.json({ success: true, count: labs.length });
-  } catch (err) {
-    res.status(500).json({ error: "❌ Не вдалося оновити лабораторії" });
-  }
-});
-
-// Очистка колекції labs
-app.delete("/labs/clear", authMiddleware, async (req, res) => {
-  try {
-    await Lab.deleteMany({});
-    res.json({ success: true, message: "✅ Колекцію labs очищено" });
-  } catch (err) {
-    res.status(500).json({ error: "❌ Не вдалося очистити labs" });
-  }
-});
-
-// Масове перенесення з IndexedDB
-app.post("/labs/migrate", authMiddleware, async (req, res) => {
-  try {
-    const labs = req.body;
-    if (!Array.isArray(labs)) {
-      return res.status(400).json({ error: "❌ Очікується масив лабораторій" });
-    }
-
-    for (const lab of labs) {
-      let filter = {};
-      if (lab.edrpou && lab.edrpou !== "ФОП") {
-        filter = { edrpou: lab.edrpou };
-      } else if (lab._id) {
-        filter = { _id: lab._id };
-      } else {
-        continue;
-      }
-
-      const { _id, ...labData } = lab; // не оновлюємо _id
-
-      await Lab.updateOne(
-        filter,
-        { $set: { ...labData, updatedAt: new Date() } },
-        { upsert: true }
-      );
-    }
-
-    res.json({ success: true, count: labs.length });
-  } catch (err) {
-    res.status(500).json({ error: "❌ Помилка при міграції", details: err.message });
-  }
-});
-
-// ==========================
-// Візити
-// ==========================
-app.get("/visits", authMiddleware, async (req, res) => {
-  try {
-    const visits = await Visit.find();
-    res.json(visits);
-  } catch (err) {
-    res.status(500).json({ error: "❌ Помилка при отриманні візитів" });
-  }
-});
-
-app.post("/visits/update", authMiddleware, async (req, res) => {
-  try {
-    const visits = req.body;
-    for (const visit of visits) {
-      let filter = {};
-      if (visit.edrpou && visit.edrpou !== "ФОП") {
-        filter = { edrpou: visit.edrpou, date: visit.date };
-      } else if (visit._id) {
-        filter = { _id: visit._id };
-      } else {
-        continue;
-      }
-
-      const { _id, ...visitData } = visit; // не оновлюємо _id
-
-      await Visit.updateOne(
-        filter,
-        { $set: { ...visitData, updatedAt: new Date() } },
-        { upsert: true }
-      );
-    }
-    res.json({ success: true, count: visits.length });
-  } catch (err) {
-    res.status(500).json({ error: "❌ Не вдалося оновити візити" });
-  }
-});
-
 // ==========================
 // Health check
 // ==========================
 app.get("/", (req, res) => res.send("API працює ✅"));
 
 // ==========================
-// Оновлення БД вручну
+// Синхронізація тендерів у labs (фонова)
 // ==========================
-app.get("/sync", async (req, res) => {
-  try {
-    await main();
-    res.send("Цикл оновлення виконано успішно!");
-  } catch (err) {
-    console.error("Помилка циклу:", err);
-    res.status(500).send("Помилка при виконанні циклу");
-  }
+app.get("/labs/tenders/sync", authMiddleware, (req, res) => {
+  main()
+    .then(() => console.log("✅ Масова синхронізація тендерів завершена"))
+    .catch(err => console.error("❌ Помилка масової синхронізації:", err));
+  res.json({ success: true, message: "Синхронізація запущена у фоні" });
 });
 
+// ==========================
 // Автоматичний запуск щоп’ятниці о 23:00
+// ==========================
 cron.schedule("0 23 * * 5", () => {
   console.log("Запускаю цикл оновлення (п’ятниця 23:00)...");
   main().catch(err => console.error("Помилка циклу:", err));
@@ -268,16 +155,4 @@ cron.schedule("0 23 * * 5", () => {
 // ==========================
 app.listen(PORT, () => {
   console.log(`✅ Сервер запущено на порті ${PORT}`);
-});
-// ==========================
-// Синхронізація тендерів у labs
-// ==========================
-app.get("/labs/tenders/sync", authMiddleware, async (req, res) => {
-  try {
-    await main(); // запускає BI sync
-    res.json({ success: true, message: "✅ Масова синхронізація тендерів виконана" });
-  } catch (err) {
-    console.error("❌ Помилка масової синхронізації:", err);
-    res.status(500).json({ error: "❌ Не вдалося виконати масову синхронізацію" });
-  }
 });
