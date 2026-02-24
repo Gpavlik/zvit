@@ -68,7 +68,7 @@ const VisitSchema = new mongoose.Schema({
 // Моделі
 // ==========================
 const User = mongoose.model("User", UserSchema);
-const Lab = mongoose.model("Lab", LabSchema);
+
 const Visit = mongoose.model("Visit", VisitSchema);
 
 // ==========================
