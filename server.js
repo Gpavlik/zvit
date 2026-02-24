@@ -43,7 +43,9 @@ const UserSchema = new mongoose.Schema({
   districts: [String]
 });
 
+// головне: _id тепер String
 const LabSchema = new mongoose.Schema({
+  _id: { type: String, required: true }, // UUID або ObjectId як рядок
   partner: String,
   region: String,
   city: String,
@@ -89,7 +91,8 @@ const LabSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 const VisitSchema = new mongoose.Schema({
-  edrpou: { type: String, index: true }, // ключ для пошуку
+  _id: { type: String, required: true }, // UUID або ObjectId як рядок
+  edrpou: { type: String, index: true },
   date: { type: Date, required: true },
   status: {
     type: String,
