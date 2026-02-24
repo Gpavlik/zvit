@@ -58,16 +58,20 @@ const LabSchema = new mongoose.Schema({
   lng: Number,
 
   devices: [{
+    category: String,
     name: String,
+    rent: Boolean,
+    debt: Boolean,
     date: Date,
-    purchases: [{
-      date: Date,
-      quantity: Number
-    }],
+    quantity: Number,
     reagents: [{
       name: String,
       quantity: Number,
       date: Date
+    }],
+    purchases: [{
+      date: Date,
+      quantity: Number
     }]
   }],
 
@@ -180,6 +184,30 @@ app.post("/labs/update", authMiddleware, async (req, res) => {
     res.json({ success: true, count: labs.length });
   } catch (err) {
     res.status(500).json({ error: "❌ Не вдалося оновити лабораторії" });
+  }
+});
+
+// Очистка колекції labs
+app.delete("/labs/clear", authMiddleware, async (req, res) => {
+  try {
+    await Lab.deleteMany({});
+    res.json({ success: true, message: "✅ Колекцію labs очищено" });
+  } catch (err) {
+    res.status(500).json({ error: "❌ Не вдалося очистити labs" });
+  }
+});
+
+// Масове перенесення з IndexedDB
+app.post("/labs/migrate", authMiddleware, async (req, res) => {
+  try {
+    const labs = req.body;
+    if (!Array.isArray(labs)) {
+      return res.status(400).json({ error: "❌ Очікується масив лабораторій" });
+    }
+    await Lab.insertMany(labs, { ordered: false });
+    res.json({ success: true, count: labs.length });
+  } catch (err) {
+    res.status(500).json({ error: "❌ Помилка при міграції", details: err.message });
   }
 });
 
