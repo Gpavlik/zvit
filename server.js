@@ -1,7 +1,6 @@
 // ==========================
 // Імпорти
 // ==========================
-require("dotenv").config(); // завжди на самому початку
 const express = require("express");
 const cors = require("cors");
 const mongoose = require("mongoose");
@@ -13,7 +12,7 @@ const Lab = require("./models/Lab");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const SECRET = process.env.JWT_SECRET || "supersecretkey";
+const SECRET = process.env.JWT_SECRET; // беремо з Railway Variables
 
 // ==========================
 // Middleware
@@ -29,7 +28,7 @@ app.use(express.urlencoded({ limit: "50mb", extended: true }));
 // ==========================
 // Підключення до MongoDB Atlas
 // ==========================
-mongoose.connect(process.env.MONGODB_URI)
+mongoose.connect(process.env.MONGO_URI || process.env.MONGODB_URI)
   .then(() => console.log("✅ Підключено до MongoDB Atlas"))
   .catch(err => console.error("❌ Помилка MongoDB:", err));
 
