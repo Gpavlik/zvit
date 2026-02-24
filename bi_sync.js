@@ -108,47 +108,46 @@ async function syncToMongo(data) {
       const edrpou = item.edrpou;
       if (!edrpou) continue;
 
-      // тендерний запис
-      let tenderEntry = {
-        name: null,
-        date: null,
-        sum: null,
-        winner: null
-      };
+      let tenderEntry = null;
 
       if (item.type === "contracts") {
         tenderEntry = {
-          name: item["Заголовки лотів договору"],
-          date: item["Дата публікації договору"] ? new Date(item["Дата публікації договору"]) : null,
-          sum: item["Поточна сума договорів"] || null,
+          title: item["Заголовки лотів договору"] || "Невідомий тендер",
+          amount: item["Поточна сума договорів"] ? Number(item["Поточна сума договорів"]) : null,
+          currency: "UAH",
+          status: "active",
+          deadline: item["Дата публікації договору"] ? new Date(item["Дата публікації договору"]) : null,
           winner: item["Постачальник"] || null
         };
       }
 
       if (item.type === "forecast") {
         tenderEntry = {
-          name: item["Пункт плану (розширений)"],
-          date: item["Рік-Місяць планованого оголошення"] ? new Date(item["Рік-Місяць планованого оголошення"]) : null,
-          sum: item["Сума пунктів плану"] || null,
+          title: item["Пункт плану (розширений)"] || "Плановий тендер",
+          amount: item["Сума пунктів плану"] ? Number(item["Сума пунктів плану"]) : null,
+          currency: "UAH",
+          status: "planned",
+          deadline: item["Рік-Місяць планованого оголошення"] ? new Date(item["Рік-Місяць планованого оголошення"]) : null,
           winner: null
         };
       }
 
-      await collection.updateOne(
-        { edrpou },
-        {
-          $set: {
-            contractor: item.contractor, // ПІБ контактної особи
-            phone: item.phone,
-            email: item.email,
-            updatedAt: new Date()
+      if (tenderEntry) {
+        await collection.updateOne(
+          { edrpou },
+          {
+            $set: {
+              contractor: item.contractor,
+              phone: item.phone,
+              email: item.email,
+              updatedAt: new Date()
+            },
+            $push: { tenders: tenderEntry }
           },
-          $addToSet: { tenders: tenderEntry }
-        },
-        { upsert: true }
-      );
-
-      console.log(`Оновлено: ${edrpou} (${item.contractor || "невідомий"})`);
+          { upsert: true }
+        );
+        console.log(`Оновлено: ${edrpou} (${item.contractor || "невідомий"})`);
+      }
     }
 
     console.log(`Синхронізовано ${data.length} записів у labs`);
@@ -156,6 +155,7 @@ async function syncToMongo(data) {
     await client.close();
   }
 }
+
 
 // === Main ===
 async function main() {
