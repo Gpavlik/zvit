@@ -60,7 +60,7 @@ async function fetchDetails(url) {
     const { data } = await axios.get(url);
     const $ = cheerio.load(data);
 
-    const contractor = $(".contact-point__subject").first().text().trim();
+    const contractor = $(".contact-point__subject").first().text().trim(); // ПІБ контактної особи
     const phone = $('a[href^="tel:"] .link-blank__text').first().text().trim();
     const email = $('a[href^="mailto:"]').first().attr("href")?.replace("mailto:", "").trim();
 
@@ -130,7 +130,7 @@ async function syncToMongo(data) {
           name: item["Пункт плану (розширений)"],
           date: item["Рік-Місяць планованого оголошення"] ? new Date(item["Рік-Місяць планованого оголошення"]) : null,
           sum: item["Сума пунктів плану"] || null,
-          winner: null // у планах переможця ще немає
+          winner: null
         };
       }
 
@@ -138,7 +138,7 @@ async function syncToMongo(data) {
         { edrpou },
         {
           $set: {
-            contractor: item.contractor,
+            contractor: item.contractor, // ПІБ контактної особи
             phone: item.phone,
             email: item.email,
             updatedAt: new Date()
