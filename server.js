@@ -77,6 +77,20 @@ const LabSchema = new mongoose.Schema({
     }]
   }],
 
+  // 🆕 нове поле для тендерів
+  tenders: [{
+    title: { type: String, required: true },        // потреба
+    amount: { type: Number, required: true },       // можливість
+    currency: { type: String, default: "UAH" },     // валюта
+    status: { 
+      type: String, 
+      enum: ["active", "planned", "done", "canceled"], 
+      default: "planned" 
+    },                                              // стан тендеру
+    deadline: { type: Date },                       // кінцевий термін
+    winner: { type: String, default: null }         // переможець
+  }],
+
   tasks: [{
     title: String,
     date: Date,
@@ -89,6 +103,7 @@ const LabSchema = new mongoose.Schema({
 
   districts: [String]
 }, { timestamps: true });
+
 
 const VisitSchema = new mongoose.Schema({
   _id: { type: String, required: true }, // UUID або ObjectId як рядок
