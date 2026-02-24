@@ -5,10 +5,7 @@ const cheerio = require("cheerio");
 const fs = require("fs");
 const axios = require("axios");
 
-// Mongo URI з Railway secrets
 const MONGO_URI = process.env.MONGO_URI;
-
-// JSON ключ Service Account збережений у Railway secrets як GOOGLE_SERVICE_ACCOUNT_KEY
 const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY);
 
 const auth = new google.auth.GoogleAuth({
@@ -66,11 +63,10 @@ async function fetchDetails(url) {
     const contractor = $(".contact-point__subject").first().text().trim();
     const phone = $('a[href^="tel:"] .link-blank__text').first().text().trim();
     const email = $('a[href^="mailto:"]').first().attr("href")?.replace("mailto:", "").trim();
-    const tenderTitle = $(".tender-title").first().text().trim();
 
-    return { contractor, phone, email, tenderTitle };
+    return { contractor, phone, email };
   } catch {
-    return { contractor: null, phone: null, email: null, tenderTitle: null };
+    return { contractor: null, phone: null, email: null };
   }
 }
 
@@ -79,14 +75,13 @@ async function enrich(data, type) {
   const enrichedData = [];
   for (const item of data) {
     const edrpou = extractEdrpou(item["Організатор"]);
-    let contractor = null, phone = null, email = null, tenderTitle = null;
+    let contractor = null, phone = null, email = null;
 
     if (type === "contracts" && item["Ідентифікатор договору_link"]) {
       const contractInfo = await fetchDetails(item["Ідентифікатор договору_link"]);
       contractor = contractInfo.contractor;
       phone = contractInfo.phone;
       email = contractInfo.email;
-      tenderTitle = contractInfo.tenderTitle;
     }
 
     if (type === "forecast" && item["Ідентифікатор пункту плану_link"]) {
@@ -94,65 +89,61 @@ async function enrich(data, type) {
       contractor = planInfo.contractor;
       phone = planInfo.phone;
       email = planInfo.email;
-      tenderTitle = planInfo.tenderTitle;
     }
 
-    enrichedData.push({ ...item, edrpou, contractor, phone, email, tenderTitle });
+    enrichedData.push({ ...item, edrpou, contractor, phone, email, type });
   }
   return enrichedData;
 }
 
-// === Sync to MongoDB ===
-async function syncToMongo(data, collectionName) {
+// === Sync to MongoDB (оновлюємо labs) ===
+async function syncToMongo(data) {
   const client = new MongoClient(MONGO_URI);
   try {
     await client.connect();
     const db = client.db("prozorro");
-    const collection = db.collection(collectionName);
+    const collection = db.collection("labs");
 
     for (const item of data) {
       const edrpou = item.edrpou;
       if (!edrpou) continue;
 
-      const tenderEntry = {
-        contractId: item["Ідентифікатор договору"],
-        lotTitle: item["Заголовки лотів договору"],
-        contractor: item.contractor,
-        phone: item.phone,
-        email: item.email,
-        contractNumber: item["Номер договору"] || null,
-        contractDate: item["Дата публікації договору"] 
-          ? new Date(item["Дата публікації договору"]) 
-          : null,
-        contractSum: item["Поточна сума договорів"],
-        tenderTitle: item.tenderTitle
+      // тендерний запис
+      let tenderEntry = {
+        name: null,
+        date: null,
+        sum: null,
+        winner: null
       };
 
-      const planEntry = {
-        planId: item["Ідентифікатор пункту плану"],
-        planTitle: item["Пункт плану (розширений)"],
-        plannedAnnouncement: item["Рік-Місяць планованого оголошення"] 
-          ? new Date(item["Рік-Місяць планованого оголошення"]) 
-          : null,
-        deliveryDate: item["Рік-Місяць доставки"] 
-          ? new Date(item["Рік-Місяць доставки"]) 
-          : null,
-        planSum: item["Сума пунктів плану"],
-        contractor: item.contractor,
-        phone: item.phone,
-        email: item.email
-      };
+      if (item.type === "contracts") {
+        tenderEntry = {
+          name: item["Заголовки лотів договору"],
+          date: item["Дата публікації договору"] ? new Date(item["Дата публікації договору"]) : null,
+          sum: item["Поточна сума договорів"] || null,
+          winner: item["Постачальник"] || null
+        };
+      }
+
+      if (item.type === "forecast") {
+        tenderEntry = {
+          name: item["Пункт плану (розширений)"],
+          date: item["Рік-Місяць планованого оголошення"] ? new Date(item["Рік-Місяць планованого оголошення"]) : null,
+          sum: item["Сума пунктів плану"] || null,
+          winner: null // у планах переможця ще немає
+        };
+      }
 
       await collection.updateOne(
         { edrpou },
         {
-          $setOnInsert: {
-            organizer: item["Організатор"]?.split("|")[0].trim()
+          $set: {
+            contractor: item.contractor,
+            phone: item.phone,
+            email: item.email,
+            updatedAt: new Date()
           },
-          $addToSet: {
-            tenders: tenderEntry,
-            plans: planEntry
-          }
+          $addToSet: { tenders: tenderEntry }
         },
         { upsert: true }
       );
@@ -160,7 +151,7 @@ async function syncToMongo(data, collectionName) {
       console.log(`Оновлено: ${edrpou} (${item.contractor || "невідомий"})`);
     }
 
-    console.log(`Синхронізовано ${data.length} записів у колекцію ${collectionName}`);
+    console.log(`Синхронізовано ${data.length} записів у labs`);
   } finally {
     await client.close();
   }
@@ -180,7 +171,7 @@ async function main() {
     const newData = parseExcelWithLinks(filename);
     const enrichedData = await enrich(newData, name);
 
-    await syncToMongo(enrichedData, `labs_${name}`);
+    await syncToMongo(enrichedData);
   }
 }
 
