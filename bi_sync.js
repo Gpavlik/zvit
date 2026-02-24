@@ -5,7 +5,7 @@ const cheerio = require("cheerio");
 const fs = require("fs");
 const axios = require("axios");
 const Lab = require("./models/Lab");
-const Lab = mongoose.model("Lab");
+
 
 
 const MONGO_URI = process.env.MONGO_URI;
