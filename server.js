@@ -13,6 +13,8 @@ const Lab = require("./models/Lab");
 const app = express();
 const PORT = process.env.PORT || 3000;
 const SECRET = process.env.JWT_SECRET || "supersecretkey";
+require("dotenv").config();
+const SECRET = process.env.JWT_SECRET || "supersecretkey";
 
 // ==========================
 // Middleware
