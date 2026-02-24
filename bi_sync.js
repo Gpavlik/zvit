@@ -3,12 +3,12 @@ const { MongoClient } = require("mongodb");
 const XLSX = require("xlsx");
 const cheerio = require("cheerio");
 const fs = require("fs");
+const axios = require("axios");
 
-
-// Mongo URI беремо з Railway secrets
+// Mongo URI з Railway secrets
 const MONGO_URI = process.env.MONGO_URI;
 
-// JSON ключ Service Account збережи у Railway secrets як GOOGLE_SERVICE_ACCOUNT_KEY
+// JSON ключ Service Account збережений у Railway secrets як GOOGLE_SERVICE_ACCOUNT_KEY
 const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY);
 
 const auth = new google.auth.GoogleAuth({
@@ -50,52 +50,54 @@ function parseExcelWithLinks(filename) {
   return jsonData;
 }
 
-// === Enricher ===
-async function fetchContactInfo(url) {
+// === Helpers ===
+function extractEdrpou(organizerField) {
+  if (!organizerField) return null;
+  const parts = organizerField.split("|");
+  return parts.length > 1 ? parts[1].trim() : null;
+}
+
+// === Fetch details from Prozorro ===
+async function fetchDetails(url) {
   try {
     const { data } = await axios.get(url);
     const $ = cheerio.load(data);
-    const name = $(".contact-point__subject").first().text().trim();
+
+    const contractor = $(".contact-point__subject").first().text().trim();
     const phone = $('a[href^="tel:"] .link-blank__text').first().text().trim();
     const email = $('a[href^="mailto:"]').first().attr("href")?.replace("mailto:", "").trim();
-    return { contractor: name || null, phone: phone || null, email: email || null };
+    const tenderTitle = $(".tender-title").first().text().trim();
+
+    return { contractor, phone, email, tenderTitle };
   } catch {
-    return { contractor: null, phone: null, email: null };
+    return { contractor: null, phone: null, email: null, tenderTitle: null };
   }
 }
 
-async function fetchLotInfo(url) {
-  try {
-    const { data } = await axios.get(url);
-    const $ = cheerio.load(data);
-    const lotName = $("h2.title.title--large").first().text().trim();
-    let auctionDate = $('div:contains("Дата аукціону")').first().text().trim();
-    let soldDate = $('div:contains("Дата підписання договору")').first().text().trim();
-    return { lotName: lotName || null, auctionDate: auctionDate || null, soldDate: soldDate || null };
-  } catch {
-    return { lotName: null, auctionDate: null, soldDate: null };
-  }
-}
-
-async function enrich(data) {
+// === Enricher ===
+async function enrich(data, type) {
   const enrichedData = [];
   for (const item of data) {
-    let contractor = null, phone = null, email = null;
-    let lotName = null, auctionDate = null, soldDate = null;
+    const edrpou = extractEdrpou(item["Організатор"]);
+    let contractor = null, phone = null, email = null, tenderTitle = null;
 
-    if (item["Організатор_link"]) {
-      const contactInfo = await fetchContactInfo(item["Організатор_link"]);
-      contractor = contactInfo.contractor;
-      phone = contactInfo.phone;
-      email = contactInfo.email;
+    if (type === "contracts" && item["Ідентифікатор договору_link"]) {
+      const contractInfo = await fetchDetails(item["Ідентифікатор договору_link"]);
+      contractor = contractInfo.contractor;
+      phone = contractInfo.phone;
+      email = contractInfo.email;
+      tenderTitle = contractInfo.tenderTitle;
     }
-    if (item["Лот_link"]) {
-      const lotInfo = await fetchLotInfo(item["Лот_link"]);
-      lotName = lotInfo.lotName;
-      auctionDate = lotInfo.auctionDate;
-      soldDate = lotInfo.soldDate;
+
+    if (type === "forecast" && item["Ідентифікатор пункту плану_link"]) {
+      const planInfo = await fetchDetails(item["Ідентифікатор пункту плану_link"]);
+      contractor = planInfo.contractor;
+      phone = planInfo.phone;
+      email = planInfo.email;
+      tenderTitle = planInfo.tenderTitle;
     }
-    enrichedData.push({ ...item, contractor, phone, email, lotName, auctionDate, soldDate });
+
+    enrichedData.push({ ...item, edrpou, contractor, phone, email, tenderTitle });
   }
   return enrichedData;
 }
@@ -109,28 +111,48 @@ async function syncToMongo(data, collectionName) {
     const collection = db.collection(collectionName);
 
     for (const item of data) {
-      const edrpou = item.ЄДРПОУ || item.edrpou;
+      const edrpou = item.edrpou;
       if (!edrpou) continue;
 
-      const lotEntry = {
-        lotName: item.lotName,
-        auctionDate: item.auctionDate ? new Date(item.auctionDate) : null,
-        soldDate: item.soldDate ? new Date(item.soldDate) : null
+      const tenderEntry = {
+        contractId: item["Ідентифікатор договору"],
+        lotTitle: item["Заголовки лотів договору"],
+        contractor: item.contractor,
+        phone: item.phone,
+        email: item.email,
+        contractNumber: item["Номер договору"] || null,
+        contractDate: item["Дата публікації договору"] 
+          ? new Date(item["Дата публікації договору"]) 
+          : null,
+        contractSum: item["Поточна сума договорів"],
+        tenderTitle: item.tenderTitle
+      };
+
+      const planEntry = {
+        planId: item["Ідентифікатор пункту плану"],
+        planTitle: item["Пункт плану (розширений)"],
+        plannedAnnouncement: item["Рік-Місяць планованого оголошення"] 
+          ? new Date(item["Рік-Місяць планованого оголошення"]) 
+          : null,
+        deliveryDate: item["Рік-Місяць доставки"] 
+          ? new Date(item["Рік-Місяць доставки"]) 
+          : null,
+        planSum: item["Сума пунктів плану"],
+        contractor: item.contractor,
+        phone: item.phone,
+        email: item.email
       };
 
       await collection.updateOne(
         { edrpou },
         {
-          $set: {
-            contractor: item.contractor,
-            phone: item.phone,
-            email: item.email,
-            region: item.region,
-            city: item.city,
-            institution: item.institution,
-            address: item.address
+          $setOnInsert: {
+            organizer: item["Організатор"]?.split("|")[0].trim()
           },
-          $addToSet: { lots: lotEntry }
+          $addToSet: {
+            tenders: tenderEntry,
+            plans: planEntry
+          }
         },
         { upsert: true }
       );
@@ -156,7 +178,7 @@ async function main() {
     await downloadFromDrive(fileId, filename);
 
     const newData = parseExcelWithLinks(filename);
-    const enrichedData = await enrich(newData);
+    const enrichedData = await enrich(newData, name);
 
     await syncToMongo(enrichedData, `labs_${name}`);
   }
