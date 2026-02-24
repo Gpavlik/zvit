@@ -54,7 +54,7 @@ const LabSchema = new mongoose.Schema({
   contractor: String,
   phone: String,
   email: String,
-  edrpou: { type: String, index: true }, // ключ для пошуку
+  edrpou: { type: String, index: true },
   manager: String,
   lat: Number,
   lng: Number,
@@ -186,9 +186,11 @@ app.post("/labs/update", authMiddleware, async (req, res) => {
         continue;
       }
 
+      const { _id, ...labData } = lab; // не оновлюємо _id
+
       await Lab.updateOne(
         filter,
-        { $set: { ...lab, updatedAt: new Date() } },
+        { $set: { ...labData, updatedAt: new Date() } },
         { upsert: true }
       );
     }
@@ -226,9 +228,11 @@ app.post("/labs/migrate", authMiddleware, async (req, res) => {
         continue;
       }
 
+      const { _id, ...labData } = lab; // не оновлюємо _id
+
       await Lab.updateOne(
         filter,
-        { $set: { ...lab, updatedAt: new Date() } },
+        { $set: { ...labData, updatedAt: new Date() } },
         { upsert: true }
       );
     }
