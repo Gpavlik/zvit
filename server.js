@@ -8,6 +8,7 @@ const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const cron = require("node-cron");
 const { main } = require("./bi_sync");
+const Lab = require("./models/Lab");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -42,67 +43,6 @@ const UserSchema = new mongoose.Schema({
   territory: String,
   districts: [String]
 });
-
-// головне: _id тепер String
-const LabSchema = new mongoose.Schema({
-  _id: { type: String, required: true }, // UUID або ObjectId як рядок
-  partner: String,
-  region: String,
-  city: String,
-  institution: String,
-  address: String,
-  contractor: String,
-  phone: String,
-  email: String,
-  edrpou: { type: String, index: true },
-  manager: String,
-  lat: Number,
-  lng: Number,
-
-  devices: [{
-    category: String,
-    name: String,
-    rent: Boolean,
-    debt: Boolean,
-    date: Date,
-    quantity: Number,
-    reagents: [{
-      name: String,
-      quantity: Number,
-      date: Date
-    }],
-    purchases: [{
-      date: Date,
-      quantity: Number
-    }]
-  }],
-
-  // 🆕 нове поле для тендерів
-  tenders: [{
-    title: { type: String, required: true },        // потреба
-    amount: { type: Number, required: true },       // можливість
-    currency: { type: String, default: "UAH" },     // валюта
-    status: { 
-      type: String, 
-      enum: ["active", "planned", "done", "canceled"], 
-      default: "planned" 
-    },                                              // стан тендеру
-    deadline: { type: Date },                       // кінцевий термін
-    winner: { type: String, default: null }         // переможець
-  }],
-
-  tasks: [{
-    title: String,
-    date: Date,
-    tasks: [{
-      priority: String,
-      action: String,
-      device: String
-    }]
-  }],
-
-  districts: [String]
-}, { timestamps: true });
 
 
 const VisitSchema = new mongoose.Schema({
