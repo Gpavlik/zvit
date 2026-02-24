@@ -51,25 +51,19 @@ const LabSchema = new mongoose.Schema({
   address: String,
   contractor: String,
   phone: String,
-  email: String,              // нове поле для email контрактора
-  edrpou: { type: String, index: true }, // ключ для пошуку
+  email: String,
+  edrpou: { type: String, index: true, required: true }, // ключ для пошуку
   manager: String,
   lat: Number,
   lng: Number,
 
-  // Масив лотів
-  lots: [{
-    lotName: String,
-    auctionDate: Date,
-    soldDate: Date
-  }],
-
   devices: [{
-    device: String,
-    soldDate: Date,
-    lastService: Date,
-    kp: String,
-    replacedParts: String,
+    name: String,
+    date: Date,
+    purchases: [{
+      date: Date,
+      quantity: Number
+    }],
     reagents: [{
       name: String,
       quantity: Number,
@@ -85,11 +79,13 @@ const LabSchema = new mongoose.Schema({
       action: String,
       device: String
     }]
-  }]
+  }],
+
+  districts: [String]
 }, { timestamps: true });
 
 const VisitSchema = new mongoose.Schema({
-  labId: { type: mongoose.Schema.Types.ObjectId, ref: "Lab", required: true },
+  edrpou: { type: String, index: true, required: true }, // ключ для пошуку
   date: { type: Date, required: true },
   status: {
     type: String,
@@ -170,27 +166,18 @@ app.get("/labs", authMiddleware, async (req, res) => {
   }
 });
 
-app.get("/labs/changes", authMiddleware, async (req, res) => {
-  try {
-    const since = new Date(parseInt(req.query.since, 10) || 0);
-    const labs = await Lab.find({ updatedAt: { $gt: since } });
-    res.json(labs);
-  } catch (err) {
-    res.status(500).json({ error: "❌ Не вдалося отримати зміни лабораторій" });
-  }
-});
-
 app.post("/labs/update", authMiddleware, async (req, res) => {
   try {
     const labs = req.body;
     for (const lab of labs) {
+      if (!lab.edrpou) continue;
       await Lab.updateOne(
-        { _id: lab._id },
-        { $set: { ...lab, updatedAt: Date.now() } },
+        { edrpou: lab.edrpou },
+        { $set: { ...lab, updatedAt: new Date() } },
         { upsert: true }
       );
     }
-    res.json({ success: true });
+    res.json({ success: true, count: labs.length });
   } catch (err) {
     res.status(500).json({ error: "❌ Не вдалося оновити лабораторії" });
   }
@@ -201,20 +188,10 @@ app.post("/labs/update", authMiddleware, async (req, res) => {
 // ==========================
 app.get("/visits", authMiddleware, async (req, res) => {
   try {
-    const visits = await Visit.find().populate("labId");
+    const visits = await Visit.find();
     res.json(visits);
   } catch (err) {
     res.status(500).json({ error: "❌ Помилка при отриманні візитів" });
-  }
-});
-
-app.get("/visits/changes", authMiddleware, async (req, res) => {
-  try {
-    const since = new Date(parseInt(req.query.since, 10) || 0);
-    const visits = await Visit.find({ updatedAt: { $gt: since } });
-    res.json(visits);
-  } catch (err) {
-    res.status(500).json({ error: "❌ Не вдалося отримати зміни візитів" });
   }
 });
 
@@ -222,13 +199,14 @@ app.post("/visits/update", authMiddleware, async (req, res) => {
   try {
     const visits = req.body;
     for (const visit of visits) {
+      if (!visit.edrpou) continue;
       await Visit.updateOne(
-        { _id: visit._id },
-        { $set: { ...visit, updatedAt: Date.now() } },
+        { edrpou: visit.edrpou, date: visit.date },
+        { $set: { ...visit, updatedAt: new Date() } },
         { upsert: true }
       );
     }
-    res.json({ success: true });
+    res.json({ success: true, count: visits.length });
   } catch (err) {
     res.status(500).json({ error: "❌ Не вдалося оновити візити" });
   }
@@ -252,12 +230,12 @@ app.get("/sync", async (req, res) => {
   }
 });
 
-
 // Автоматичний запуск щоп’ятниці о 23:00
 cron.schedule("0 23 * * 5", () => {
- console.log("Запускаю цикл оновлення (п’ятниця 23:00)...");
-main().catch(err => console.error("Помилка циклу:", err));
-    });
+  console.log("Запускаю цикл оновлення (п’ятниця 23:00)...");
+  main().catch(err => console.error("Помилка циклу:", err));
+});
+
 // ==========================
 // Запуск сервера
 // ==========================
