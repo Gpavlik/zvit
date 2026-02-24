@@ -1,9 +1,10 @@
 const { google } = require("googleapis");
-const { MongoClient } = require("mongodb");
+const mongoose = require("mongoose");
 const XLSX = require("xlsx");
 const cheerio = require("cheerio");
 const fs = require("fs");
 const axios = require("axios");
+const Lab = require("./models/Lab");
 
 const MONGO_URI = process.env.MONGO_URI;
 const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY);
@@ -60,7 +61,7 @@ async function fetchDetails(url) {
     const { data } = await axios.get(url);
     const $ = cheerio.load(data);
 
-    const contractor = $(".contact-point__subject").first().text().trim(); // ПІБ контактної особи
+    const contractor = $(".contact-point__subject").first().text().trim();
     const phone = $('a[href^="tel:"] .link-blank__text').first().text().trim();
     const email = $('a[href^="mailto:"]').first().attr("href")?.replace("mailto:", "").trim();
 
@@ -98,64 +99,57 @@ async function enrich(data, type) {
 
 // === Sync to MongoDB (оновлюємо labs) ===
 async function syncToMongo(data) {
-  const client = new MongoClient(MONGO_URI);
-  try {
-    await client.connect();
-    const db = client.db("prozorro");
-    const collection = db.collection("labs");
+  await mongoose.connect(MONGO_URI);
 
-    for (const item of data) {
-      const edrpou = item.edrpou;
-      if (!edrpou) continue;
+  for (const item of data) {
+    const edrpou = item.edrpou;
+    if (!edrpou) continue;
 
-      let tenderEntry = null;
+    let tenderEntry = null;
 
-      if (item.type === "contracts") {
-        tenderEntry = {
-          title: item["Заголовки лотів договору"] || "Невідомий тендер",
-          amount: item["Поточна сума договорів"] ? Number(item["Поточна сума договорів"]) : null,
-          currency: "UAH",
-          status: "active",
-          deadline: item["Дата публікації договору"] ? new Date(item["Дата публікації договору"]) : null,
-          winner: item["Постачальник"] || null
-        };
-      }
-
-      if (item.type === "forecast") {
-        tenderEntry = {
-          title: item["Пункт плану (розширений)"] || "Плановий тендер",
-          amount: item["Сума пунктів плану"] ? Number(item["Сума пунктів плану"]) : null,
-          currency: "UAH",
-          status: "planned",
-          deadline: item["Рік-Місяць планованого оголошення"] ? new Date(item["Рік-Місяць планованого оголошення"]) : null,
-          winner: null
-        };
-      }
-
-      if (tenderEntry) {
-        await collection.updateOne(
-          { edrpou },
-          {
-            $set: {
-              contractor: item.contractor,
-              phone: item.phone,
-              email: item.email,
-              updatedAt: new Date()
-            },
-            $push: { tenders: tenderEntry }
-          },
-          { upsert: true }
-        );
-        console.log(`Оновлено: ${edrpou} (${item.contractor || "невідомий"})`);
-      }
+    if (item.type === "contracts") {
+      tenderEntry = {
+        title: item["Заголовки лотів договору"] || "Невідомий тендер",
+        amount: item["Поточна сума договорів"] ? Number(item["Поточна сума договорів"]) : null,
+        currency: "UAH",
+        status: "active",
+        deadline: item["Дата публікації договору"] ? new Date(item["Дата публікації договору"]) : null,
+        winner: item["Постачальник"] || null
+      };
     }
 
-    console.log(`Синхронізовано ${data.length} записів у labs`);
-  } finally {
-    await client.close();
-  }
-}
+    if (item.type === "forecast") {
+      tenderEntry = {
+        title: item["Пункт плану (розширений)"] || "Плановий тендер",
+        amount: item["Сума пунктів плану"] ? Number(item["Сума пунктів плану"]) : null,
+        currency: "UAH",
+        status: "planned",
+        deadline: item["Рік-Місяць планованого оголошення"] ? new Date(item["Рік-Місяць планованого оголошення"]) : null,
+        winner: null
+      };
+    }
 
+    if (tenderEntry) {
+      await Lab.updateOne(
+        { edrpou },
+        {
+          $set: {
+            contractor: item.contractor,
+            phone: item.phone,
+            email: item.email,
+            updatedAt: new Date()
+          },
+          $push: { tenders: tenderEntry }
+        },
+        { upsert: true }
+      );
+      console.log(`Оновлено: ${edrpou} (${item.contractor || "невідомий"})`);
+    }
+  }
+
+  console.log(`Синхронізовано ${data.length} записів у labs`);
+  await mongoose.disconnect();
+}
 
 // === Main ===
 async function main() {
