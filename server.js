@@ -268,9 +268,11 @@ app.post("/visits/update", authMiddleware, async (req, res) => {
         continue;
       }
 
+      const { _id, ...visitData } = visit; // не оновлюємо _id
+
       await Visit.updateOne(
         filter,
-        { $set: { ...visit, updatedAt: new Date() } },
+        { $set: { ...visitData, updatedAt: new Date() } },
         { upsert: true }
       );
     }
