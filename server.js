@@ -327,3 +327,15 @@ cron.schedule("0 23 * * 5", () => {
 app.listen(PORT, () => {
   console.log(`✅ Сервер запущено на порті ${PORT}`);
 });
+// ==========================
+// Синхронізація тендерів у labs
+// ==========================
+app.get("/labs/tenders/sync", authMiddleware, async (req, res) => {
+  try {
+    await main(); // запускає BI sync
+    res.json({ success: true, message: "✅ Масова синхронізація тендерів виконана" });
+  } catch (err) {
+    console.error("❌ Помилка масової синхронізації:", err);
+    res.status(500).json({ error: "❌ Не вдалося виконати масову синхронізацію" });
+  }
+});
