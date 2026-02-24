@@ -4,6 +4,7 @@ const XLSX = require("xlsx");
 const cheerio = require("cheerio");
 const fs = require("fs");
 const axios = require("axios");
+const Lab = require("./models/Lab");
 const Lab = mongoose.model("Lab");
 
 
