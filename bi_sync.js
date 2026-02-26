@@ -101,8 +101,6 @@ async function enrich(data, type) {
 
 // === Sync to MongoDB (оновлюємо labs) ===
 async function syncToMongo(data) {
-  await mongoose.connect(MONGO_URI);
-
   for (const item of data) {
     const edrpou = item.edrpou;
     if (!edrpou) continue;
@@ -150,39 +148,41 @@ async function syncToMongo(data) {
   }
 
   console.log(`Синхронізовано ${data.length} записів у labs`);
-  await mongoose.disconnect();
 }
 
 // === Main ===
-// === Main з батчовою обробкою ===
 async function main() {
-  const fileIds = {
-    forecast: "1EwnFUdMe4CLE73VT3s9xO187a8ezyXQm",
-    contracts: "1bYGwPBrXm_merxSbewHZgl7bCSAB8fxh"
-  };
+  try {
+    await mongoose.connect(MONGO_URI);
+    console.log("✅ Підключено до MongoDB Atlas");
 
-  for (const [name, fileId] of Object.entries(fileIds)) {
-    const filename = `${name}.xlsx`;
-    await downloadFromDrive(fileId, filename);
+    const fileIds = {
+      forecast: "1EwnFUdMe4CLE73VT3s9xO187a8ezyXQm",
+      contracts: "1bYGwPBrXm_merxSbewHZgl7bCSAB8fxh"
+    };
 
-    const newData = parseExcelWithLinks(filename);
-    console.log(`📊 Файл ${name}: ${newData.length} рядків`);
+    for (const [name, fileId] of Object.entries(fileIds)) {
+      const filename = `${name}.xlsx`;
+      await downloadFromDrive(fileId, filename);
 
-    // Обробка батчами по 10 000
-    const BATCH_SIZE = 10000;
-    for (let i = 0; i < newData.length; i += BATCH_SIZE) {
-      const batch = newData.slice(i, i + BATCH_SIZE);
-      console.log(`🚀 Обробляю батч ${i / BATCH_SIZE + 1} (${batch.length} рядків)`);
+      const newData = parseExcelWithLinks(filename);
+      console.log(`📊 Файл ${name}: ${newData.length} рядків`);
 
-      const enrichedData = await enrich(batch, name);
-      await syncToMongo(enrichedData);
+      const BATCH_SIZE = 10000;
+      for (let i = 0; i < newData.length; i += BATCH_SIZE) {
+        const batch = newData.slice(i, i + BATCH_SIZE);
+        console.log(`🚀 Обробляю батч ${i / BATCH_SIZE + 1} (${batch.length} рядків)`);
 
-      console.log(`✅ Завершено батч ${i / BATCH_SIZE + 1}`);
+        const enrichedData = await enrich(batch, name);
+        await syncToMongo(enrichedData);
+
+        console.log(`✅ Завершено батч ${i / BATCH_SIZE + 1}`);
+      }
     }
+
+    await mongoose.disconnect();
+    console.log("🎉 Всі файли оброблено!");
+  } catch (err) {
+    console.error("❌ Помилка масової синхронізації:", err);
   }
-
-  console.log("🎉 Всі файли оброблено!");
 }
-
-
-module.exports = { main };
