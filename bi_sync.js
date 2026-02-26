@@ -6,8 +6,6 @@ const fs = require("fs");
 const axios = require("axios");
 const Lab = require("./models/Lab");
 
-
-
 const MONGO_URI = process.env.MONGO_URI;
 const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY);
 
@@ -186,3 +184,6 @@ async function main() {
     console.error("❌ Помилка масової синхронізації:", err);
   }
 }
+
+// === Правильний експорт ===
+module.exports = { main };
