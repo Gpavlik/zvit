@@ -73,64 +73,76 @@ async function fetchDetails(url) {
 
 // === Enricher ===
 async function enrich(data, type) {
-  const enrichedData = [];
-  for (const item of data) {
+  return await Promise.all(data.map(async item => {
     const edrpou = extractEdrpou(item["Організатор"]);
     let contractor = null, phone = null, email = null;
 
-    if (type === "contracts" && item["Ідентифікатор договору_link"]) {
-      const contractInfo = await fetchDetails(item["Ідентифікатор договору_link"]);
-      contractor = contractInfo.contractor;
-      phone = contractInfo.phone;
-      email = contractInfo.email;
+    try {
+      if (type === "contracts" && item["Ідентифікатор договору_link"]) {
+        const contractInfo = await fetchDetails(item["Ідентифікатор договору_link"]);
+        contractor = contractInfo.contractor;
+        phone = contractInfo.phone;
+        email = contractInfo.email;
+      }
+
+      if (type === "forecast" && item["Ідентифікатор пункту плану_link"]) {
+        const planInfo = await fetchDetails(item["Ідентифікатор пункту плану_link"]);
+        contractor = planInfo.contractor;
+        phone = planInfo.phone;
+        email = planInfo.email;
+      }
+    } catch (err) {
+      console.error("❌ Помилка Prozorro:", err.message);
     }
 
-    if (type === "forecast" && item["Ідентифікатор пункту плану_link"]) {
-      const planInfo = await fetchDetails(item["Ідентифікатор пункту плану_link"]);
-      contractor = planInfo.contractor;
-      phone = planInfo.phone;
-      email = planInfo.email;
-    }
-
-    enrichedData.push({ ...item, edrpou, contractor, phone, email, type });
-  }
-  return enrichedData;
+    return { ...item, edrpou, contractor, phone, email, type };
+  }));
 }
+
 
 // === Sync to MongoDB (оновлюємо labs) ===
 async function syncToMongo(data) {
-  for (const item of data) {
+  const operations = data.map(item => {
     const edrpou = item.edrpou;
-    if (!edrpou) continue;
+    if (!edrpou) return null;
 
     let tenderEntry = null;
 
     if (item.type === "contracts") {
+      const amountRaw = item["Поточна сума договорів"];
+      const deadlineRaw = item["Дата публікації договору"];
+      const winnerRaw = item["Постачальник"];
+
       tenderEntry = {
         title: item["Заголовки лотів договору"] || "Невідомий тендер",
-        amount: item["Поточна сума договорів"] ? Number(item["Поточна сума договорів"]) : null,
+        amount: amountRaw && !isNaN(Number(amountRaw)) ? Number(amountRaw) : null,
         currency: "UAH",
         status: "active",
-        deadline: item["Дата публікації договору"] ? new Date(item["Дата публікації договору"]) : null,
-        winner: item["Постачальник"] || null
+        deadline: deadlineRaw && !isNaN(Date.parse(deadlineRaw)) ? new Date(deadlineRaw) : null,
+        winner: winnerRaw ? winnerRaw.split("|")[0].trim() : null
       };
     }
 
     if (item.type === "forecast") {
+      const amountRaw = item["Сума пунктів плану"];
+      const deadlineRaw = item["Рік-Місяць планованого оголошення"];
+
       tenderEntry = {
         title: item["Пункт плану (розширений)"] || "Плановий тендер",
-        amount: item["Сума пунктів плану"] ? Number(item["Сума пунктів плану"]) : null,
+        amount: amountRaw && !isNaN(Number(amountRaw)) ? Number(amountRaw) : null,
         currency: "UAH",
         status: "planned",
-        deadline: item["Рік-Місяць планованого оголошення"] ? new Date(item["Рік-Місяць планованого оголошення"]) : null,
+        deadline: deadlineRaw && !isNaN(Date.parse(deadlineRaw)) ? new Date(deadlineRaw) : null,
         winner: null
       };
     }
 
-    if (tenderEntry) {
-      await Lab.updateOne(
-        { edrpou },
-        {
+    if (!tenderEntry) return null;
+
+    return {
+      updateOne: {
+        filter: { edrpou },
+        update: {
           $set: {
             contractor: item.contractor,
             phone: item.phone,
@@ -139,13 +151,15 @@ async function syncToMongo(data) {
           },
           $push: { tenders: tenderEntry }
         },
-        { upsert: true }
-      );
-      console.log(`Оновлено: ${edrpou} (${item.contractor || "невідомий"})`);
-    }
-  }
+        upsert: true
+      }
+    };
+  }).filter(op => op !== null);
 
-  console.log(`Синхронізовано ${data.length} записів у labs`);
+  if (operations.length > 0) {
+    await Lab.bulkWrite(operations);
+    console.log(`Синхронізовано ${operations.length} записів у labs`);
+  }
 }
 
 // === Main ===
