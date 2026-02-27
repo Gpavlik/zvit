@@ -163,10 +163,11 @@ async function syncToMongo(data) {
 }
 
 // === Main ===
+// === Main ===
 async function main() {
   try {
     await mongoose.connect(MONGO_URI);
-    console.log("✅ Підключено до MongoDB Atlas");
+    console.log(`[${new Date().toISOString()}] ✅ Підключено до MongoDB Atlas`);
 
     const fileIds = {
       forecast: "1EwnFUdMe4CLE73VT3s9xO187a8ezyXQm",
@@ -178,26 +179,31 @@ async function main() {
       await downloadFromDrive(fileId, filename);
 
       const newData = parseExcelWithLinks(filename);
-      console.log(`📊 Файл ${name}: ${newData.length} рядків`);
+      console.log(`[${new Date().toISOString()}] 📊 Файл ${name}: ${newData.length} рядків`);
 
       const BATCH_SIZE = 10000;
       for (let i = 0; i < newData.length; i += BATCH_SIZE) {
         const batch = newData.slice(i, i + BATCH_SIZE);
-        console.log(`🚀 Обробляю батч ${i / BATCH_SIZE + 1} (${batch.length} рядків)`);
+        const batchNum = i / BATCH_SIZE + 1;
+
+        console.log(`[${new Date().toISOString()}] 🚀 Початок батчу ${batchNum} (${batch.length} рядків)`);
+        console.time(`⏱ Тривалість батчу ${batchNum}`);
 
         const enrichedData = await enrich(batch, name);
         await syncToMongo(enrichedData);
 
-        console.log(`✅ Завершено батч ${i / BATCH_SIZE + 1}`);
+        console.timeEnd(`⏱ Тривалість батчу ${batchNum}`);
+        console.log(`[${new Date().toISOString()}] ✅ Завершено батч ${batchNum}`);
       }
     }
 
     await mongoose.disconnect();
-    console.log("🎉 Всі файли оброблено!");
+    console.log(`[${new Date().toISOString()}] 🎉 Всі файли оброблено!`);
   } catch (err) {
     console.error("❌ Помилка масової синхронізації:", err);
   }
 }
+
 
 // === Правильний експорт ===
 module.exports = { main };
