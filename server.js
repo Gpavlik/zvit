@@ -159,6 +159,32 @@ app.get("/visits/changes", authMiddleware, async (req, res) => {
     res.status(500).json({ error: "❌ Не вдалося отримати зміни у візитах" });
   }
 });
+// ==========================
+// разовий повний дамп
+// ==========================
+// Всі лабораторії (повний дамп)
+app.get("/labs/all", authMiddleware, async (req, res) => {
+  try {
+    const labs = await Lab.find();
+    res.json(labs);
+  } catch (err) {
+    console.error("❌ Помилка отримання всіх лабораторій:", err);
+    res.status(500).json({ error: "❌ Не вдалося отримати всі лабораторії" });
+  }
+});
+
+// Всі візити (повний дамп)
+app.get("/visits/all", authMiddleware, async (req, res) => {
+  try {
+    const visits = await Visit.find();
+    res.json(visits);
+  } catch (err) {
+    console.error("❌ Помилка отримання всіх візитів:", err);
+    res.status(500).json({ error: "❌ Не вдалося отримати всі візити" });
+  }
+});
+
+
 
 // ==========================
 // Health check
