@@ -12,7 +12,7 @@ const Lab = require("./models/Lab");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const SECRET = process.env.JWT_SECRET; // беремо з Railway Variables
+const SECRET = process.env.JWT_SECRET;
 
 // ==========================
 // Middleware
@@ -94,6 +94,7 @@ app.post("/login", async (req, res) => {
     const token = jwt.sign({ login: user.login, role: user.role }, SECRET, { expiresIn: "1d" });
     res.json({ message: "✅ Авторизація успішна", role: user.role, token });
   } catch (err) {
+    console.error("❌ Помилка логіну:", err);
     res.status(500).json({ error: "❌ Помилка сервера" });
   }
 });
@@ -123,6 +124,39 @@ app.get("/labs", authMiddleware, async (req, res) => {
     res.json(labs);
   } catch (err) {
     res.status(500).json({ error: "❌ Не вдалося отримати лабораторії" });
+  }
+});
+
+// Додатково: зміни у labs
+app.get("/labs/changes", authMiddleware, async (req, res) => {
+  try {
+    const since = new Date(parseInt(req.query.since));
+    const labs = await Lab.find({ updatedAt: { $gte: since } });
+    res.json(labs);
+  } catch (err) {
+    res.status(500).json({ error: "❌ Не вдалося отримати зміни у лабораторіях" });
+  }
+});
+
+// ==========================
+// Візити
+// ==========================
+app.get("/visits", authMiddleware, async (req, res) => {
+  try {
+    const visits = await Visit.find();
+    res.json(visits);
+  } catch (err) {
+    res.status(500).json({ error: "❌ Не вдалося отримати візити" });
+  }
+});
+
+app.get("/visits/changes", authMiddleware, async (req, res) => {
+  try {
+    const since = new Date(parseInt(req.query.since));
+    const visits = await Visit.find({ updatedAt: { $gte: since } });
+    res.json(visits);
+  } catch (err) {
+    res.status(500).json({ error: "❌ Не вдалося отримати зміни у візитах" });
   }
 });
 
