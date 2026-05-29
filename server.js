@@ -159,6 +159,50 @@ app.get("/visits/changes", authMiddleware, async (req, res) => {
     res.status(500).json({ error: "❌ Не вдалося отримати зміни у візитах" });
   }
 });
+
+// ==========================
+// Оновлення лабораторій
+// ==========================
+app.post("/labs/update", authMiddleware, async (req, res) => {
+  try {
+    const labs = req.body;
+    for (const lab of labs) {
+      await Lab.findOneAndUpdate(
+        { edrpou: lab.edrpou },   // ключ для пошуку
+        { ...lab, updatedAt: new Date() }, // оновлюємо дані
+        { upsert: true, new: true }
+      );
+    }
+    res.json({ message: "✅ Лабораторії оновлено", count: labs.length });
+  } catch (err) {
+    console.error("❌ Помилка оновлення лабораторій:", err);
+    res.status(500).json({ error: "❌ Не вдалося оновити лабораторії" });
+  }
+});
+
+// ==========================
+// Оновлення візитів
+// ==========================
+app.post("/visits/update", authMiddleware, async (req, res) => {
+  try {
+    const visits = req.body;
+    for (const visit of visits) {
+      await Visit.findOneAndUpdate(
+        { _id: visit._id },   // ключ для пошуку
+        { ...visit, updatedAt: new Date() },
+        { upsert: true, new: true }
+      );
+    }
+    res.json({ message: "✅ Візити оновлено", count: visits.length });
+  } catch (err) {
+    console.error("❌ Помилка оновлення візитів:", err);
+    res.status(500).json({ error: "❌ Не вдалося оновити візити" });
+  }
+});
+
+
+
+
 // ==========================
 // разовий повний дамп
 // ==========================
